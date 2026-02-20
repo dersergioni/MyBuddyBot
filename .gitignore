@@ -1,0 +1,27 @@
+# Build artifacts
+build*/
+cmake-build-*/
+debug/
+release/
+out/
+Testing/
+
+# IDEs
+.idea/
+.vs/
+.vscode/
+
+# macOS
+.DS_Store
+
+# Claude Code
+.claude/
+
+# Data
+data/
+*.db
+*.log
+
+# Secrets
+.env
+run_bot.sh

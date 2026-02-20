@@ -1,0 +1,9 @@
+services:
+  bot:
+    build: .
+    image: mybuddybot:latest
+    container_name: mybuddybot
+    env_file: .env
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

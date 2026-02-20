@@ -1,0 +1,17 @@
+---
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  modernize-use-override,
+  concurrency-*,
+  readability-redundant-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-exception-escape,
+  -modernize-use-trailing-return-type,
+  -readability-identifier-length,
+  -performance-avoid-endl,
+  -performance-enum-size,
+
+HeaderFilterRegex: '(ai|bot|core|infra|telegram)/.*'
+WarningsAsErrors: ''

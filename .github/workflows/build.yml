@@ -1,0 +1,227 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install system dependencies (Ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake ninja-build \
+          libssl-dev libcurl4-openssl-dev \
+          libboost-all-dev \
+          libfmt-dev rapidjson-dev \
+          libsqlite3-dev \
+          libgtest-dev \
+          ffmpeg \
+          clang-tidy
+
+    - name: Install system dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew update
+        brew install cmake ninja boost openssl curl fmt rapidjson sqlite3 googletest ffmpeg
+
+    - name: Cache tgbot-cpp
+      uses: actions/cache@v4
+      id: tgbot-cache
+      with:
+        path: ${{ github.workspace }}/tgbot-install
+        key: tgbot-${{ matrix.os }}-${{ hashFiles('.github/workflows/build.yml') }}
+
+    - name: Build tgbot-cpp
+      if: steps.tgbot-cache.outputs.cache-hit != 'true'
+      run: |
+        git clone --depth 1 https://github.com/reo7sp/tgbot-cpp.git
+        cd tgbot-cpp
+        cmake -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -G Ninja -B build
+        cmake --build build
+        cmake --install build --prefix ${{ github.workspace }}/tgbot-install
+
+    - name: Configure CMake (Ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        cmake -B ${{ github.workspace }}/build \
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+          -DTGBOT_LIBRARY_LOCATION=${{ github.workspace }}/tgbot-install \
+          -DBUILD_TESTS=ON \
+          -G Ninja
+
+    - name: Configure CMake (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        cmake -B ${{ github.workspace }}/build \
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+          -DTGBOT_LIBRARY_LOCATION=${{ github.workspace }}/tgbot-install \
+          -DOPENSSL_ROOT_DIR=$(brew --prefix openssl) \
+          -DBUILD_TESTS=ON \
+          -G Ninja
+
+    - name: Build
+      run: cmake --build ${{ github.workspace }}/build --config ${{ env.BUILD_TYPE }}
+
+    - name: Test
+      working-directory: ${{ github.workspace }}/build
+      env:
+        # Provide minimal env vars for tests
+        MYBUDDYBOT_DB_PATH: /tmp/test.db
+        MYBUDDYBOT_STATE_PATH: /tmp/test.state
+        TG_API_TOKEN: test_token
+        OAI_API_TOKEN: test_token
+        XAI_API_TOKEN: test_token
+        GOOGLE_API_TOKEN: test_token
+      run: ctest -C ${{ env.BUILD_TYPE }} --output-on-failure --timeout 120 -E IntegrationTest
+
+    - name: Run clang-tidy
+      if: runner.os == 'Linux'
+      run: run-clang-tidy -p ${{ github.workspace }}/build '(ai|bot|core|infra|telegram|Tests|main)\.' || true
+
+  windows-build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Set up MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Bootstrap vcpkg
+      shell: pwsh
+      run: |
+        git clone --depth 1 https://github.com/microsoft/vcpkg.git "${{ github.workspace }}\vcpkg"
+        & "${{ github.workspace }}\vcpkg\bootstrap-vcpkg.bat" -disableMetrics
+
+    - name: Cache vcpkg artifacts
+      uses: actions/cache@v4
+      id: vcpkg-cache-win
+      with:
+        path: |
+          ${{ github.workspace }}\vcpkg\downloads
+          ${{ github.workspace }}\vcpkg\packages
+          ${{ github.workspace }}\vcpkg\installed
+        key: vcpkg-${{ runner.os }}-x64-windows-release-${{ hashFiles('.github/workflows/build.yml', 'CMakeLists.txt') }}
+        restore-keys: |
+          vcpkg-${{ runner.os }}-x64-windows-release-
+
+    - name: Install vcpkg dependencies
+      if: steps.vcpkg-cache-win.outputs.cache-hit != 'true'
+      shell: pwsh
+      env:
+        VCPKG_ROOT: ${{ github.workspace }}\vcpkg
+      run: |
+        $vcpkg = "${{ github.workspace }}\vcpkg\vcpkg.exe"
+        $maxAttempts = 3
+
+        for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+          & $vcpkg install `
+            boost-config `
+            boost-headers `
+            boost-algorithm `
+            boost-asio `
+            boost-lexical-cast `
+            boost-property-tree `
+            boost-system `
+            boost-variant `
+            zlib `
+            openssl `
+            curl `
+            fmt `
+            rapidjson `
+            sqlite3 `
+            gtest `
+            --triplet x64-windows-release `
+            --clean-after-build
+
+          if ($LASTEXITCODE -eq 0) {
+            break
+          }
+
+          if ($attempt -eq $maxAttempts) {
+            exit $LASTEXITCODE
+          }
+
+          $delaySeconds = 20 * $attempt
+          Write-Host "vcpkg install failed on attempt $attempt/$maxAttempts. Retrying in $delaySeconds seconds..."
+          Start-Sleep -Seconds $delaySeconds
+        }
+
+    - name: Cache tgbot-cpp (Windows)
+      uses: actions/cache@v4
+      id: tgbot-cache-win
+      with:
+        path: ${{ github.workspace }}/tgbot-install
+        key: tgbot-windows-${{ hashFiles('.github/workflows/build.yml') }}
+
+    - name: Build tgbot-cpp (Windows Release)
+      if: steps.tgbot-cache-win.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        git clone --depth 1 https://github.com/reo7sp/tgbot-cpp.git
+
+        cmake -S tgbot-cpp -B tgbot-cpp/build-release `
+          -G "Visual Studio 17 2022" `
+          -A x64 `
+          -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+          -DVCPKG_TARGET_TRIPLET=x64-windows-release `
+          -DBoost_INCLUDE_DIR="${{ github.workspace }}/vcpkg/installed/x64-windows-release/include" `
+          -DBoost_INCLUDE_DIRS="${{ github.workspace }}/vcpkg/installed/x64-windows-release/include" `
+          -DBoost_LIBRARY_DIR_RELEASE="${{ github.workspace }}/vcpkg/installed/x64-windows-release/lib" `
+          -DCMAKE_BUILD_TYPE=Release
+        cmake --build tgbot-cpp/build-release --config Release
+        cmake --install tgbot-cpp/build-release --config Release --prefix "${{ github.workspace }}/tgbot-install"
+        New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/tgbot-install/release/lib" | Out-Null
+        Copy-Item "${{ github.workspace }}/tgbot-install/lib/TgBot.lib" `
+          "${{ github.workspace }}/tgbot-install/release/lib/TgBot.lib" -Force
+        New-Item -ItemType Directory -Force -Path "${{ github.workspace }}/tgbot-install/debug/lib" | Out-Null
+        Copy-Item "${{ github.workspace }}/tgbot-install/lib/TgBot.lib" `
+          "${{ github.workspace }}/tgbot-install/debug/lib/TgBot.lib" -Force
+
+    - name: Configure CMake (Windows)
+      shell: pwsh
+      run: |
+        cmake -B "${{ github.workspace }}/build-windows" `
+          -G "Visual Studio 17 2022" `
+          -A x64 `
+          -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" `
+          -DVCPKG_TARGET_TRIPLET=x64-windows-release `
+          -DTGBOT_LIBRARY_LOCATION="${{ github.workspace }}/tgbot-install" `
+          -DBUILD_TESTS=ON
+
+    - name: Build (Windows)
+      shell: pwsh
+      run: cmake --build "${{ github.workspace }}/build-windows" --config ${{ env.BUILD_TYPE }}
+
+    - name: Test (Windows)
+      shell: pwsh
+      env:
+        MYBUDDYBOT_DB_PATH: ${{ runner.temp }}/test.db
+        MYBUDDYBOT_STATE_PATH: ${{ runner.temp }}/test.state
+        TG_API_TOKEN: test_token
+        OAI_API_TOKEN: test_token
+        XAI_API_TOKEN: test_token
+        GOOGLE_API_TOKEN: test_token
+      run: ctest --test-dir "${{ github.workspace }}/build-windows" -C ${{ env.BUILD_TYPE }} --output-on-failure --timeout 120 -E IntegrationTest
