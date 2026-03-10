@@ -29,8 +29,7 @@ const char* ToGeminiRole(const std::string& role)
 }
 } // anonymous namespace
 
-GoogleService::GoogleService(std::shared_ptr<IMessageWorker> messageWorker)
-    : IAiService(std::move(messageWorker))
+GoogleService::GoogleService(std::shared_ptr<IMessageWorker> messageWorker) : IAiService(std::move(messageWorker))
 {
     const auto& apiKey = Config::GetGoogleToken();
 
@@ -97,8 +96,8 @@ bool GoogleService::ExtractStreamContent(const std::string& jsonChunk, StreamSta
         if (strcmp(reason, "STOP") == 0 || strcmp(reason, "MAX_TOKENS") == 0)
         {
             // Flush final text into the message worker.
-            state.workerId = messageWorker_->AddMessagePortion(state.workerId, state.chatId, state.threadId,
-                                                                     state.responseText);
+            state.workerId =
+                messageWorker_->AddMessagePortion(state.workerId, state.chatId, state.threadId, state.responseText);
             return true;
         }
     }
@@ -115,8 +114,8 @@ bool GoogleService::ExtractStreamContent(const std::string& jsonChunk, StreamSta
                 if (!text.empty())
                 {
                     state.responseText += text;
-                    state.workerId = messageWorker_->AddMessagePortion(state.workerId, state.chatId,
-                                                                             state.threadId, state.responseText);
+                    state.workerId = messageWorker_->AddMessagePortion(state.workerId, state.chatId, state.threadId,
+                                                                       state.responseText);
                 }
             }
         }

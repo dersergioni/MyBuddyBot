@@ -14,6 +14,7 @@ A C++ Telegram bot with multi-provider AI integration (OpenAI, xAI/Grok, Google 
 - Voice message support (speech-to-text and audio responses)
 - Conversation history with context preservation
 - Switch between AI providers on the fly
+- Response viewer for AI responses with LaTeX formulas, syntax-highlighted code, and tables
 
 ## Prerequisites
 
@@ -138,6 +139,8 @@ See `example.env` for a ready-to-fill template.
 | `MYBUDDYBOT_BLOCKLIST_IDS` | No | CSV list of blocked Telegram user IDs |
 | `MYBUDDYBOT_BLOCKLIST_USERNAMES` | No | CSV list of blocked Telegram usernames |
 | `MYBUDDYBOT_ADMIN_IDS` | No | CSV list of admin Telegram user IDs |
+| `MYBUDDYBOT_VIEWER_URL` | No | Public URL of the response viewer, **must end with `/`** (e.g. `https://bot.example.com/viewer/`) |
+| `MYBUDDYBOT_VIEWER_DIR` | No | Local directory where the viewer files are served from (e.g. `/var/www/MyBuddyBot/viewer`) |
 | `MYBUDDYBOT_RUN_INTEGRATION_TESTS` | No | Set to `1` to enable integration tests |
 
 **\*** At least one AI provider token must be set. Providers without tokens are disabled, and `/switch_provider` cycles only through enabled providers.
@@ -203,6 +206,108 @@ You can omit provider tokens you don't plan to use. At least one AI provider tok
 3. Chat naturally — the bot will respond using AI
 4. Use `/image` and describe what you want to generate
 5. Send voice messages for speech-to-text processing
+
+### Response Viewer (LaTeX Rendering)
+
+When AI responses contain LaTeX formulas (`$$...$$`, `\(...\)`, `\[...\]`), the bot automatically sends a button that opens a page with properly rendered math, syntax-highlighted code, and formatted tables.
+
+**How it works:** The bot saves the raw Markdown response as a JSON file to disk. Nginx serves it as static content. The viewer page fetches and renders it client-side using KaTeX, highlight.js, and marked.js.
+
+#### Production Setup (VPS with nginx)
+
+1. Copy the `viewer/` directory to your VPS web root and set permissions:
+
+```bash
+mkdir -p /var/www/MyBuddyBot
+cp -r viewer /var/www/MyBuddyBot/
+mkdir -p /var/www/MyBuddyBot/viewer/responses
+chown <bot-user>:<bot-user> /var/www/MyBuddyBot/viewer/responses
+```
+
+Replace `<bot-user>` with the OS user that runs the bot process. Only `responses/` needs write access — the rest stays read-only.
+
+2. Configure nginx (`/etc/nginx/sites-available/bot.example.com`):
+
+```nginx
+server {
+    listen 80;
+    server_name bot.example.com;
+
+    location /viewer/ {
+        alias /var/www/MyBuddyBot/viewer/;
+        try_files $uri $uri/ =404;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/bot.example.com /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+3. Enable HTTPS with Let's Encrypt:
+
+```bash
+sudo certbot --nginx -d bot.example.com
+```
+
+Certbot will automatically update the nginx config to add SSL and redirect HTTP to HTTPS.
+
+4. Set the environment variables and restart the bot:
+
+```bash
+export MYBUDDYBOT_VIEWER_URL="https://bot.example.com/viewer/"
+export MYBUDDYBOT_VIEWER_DIR="/var/www/MyBuddyBot/viewer"
+```
+
+5. The bot will:
+   - Send normal Telegram HTML responses as usual
+   - Detect LaTeX in responses and additionally send an "Open formatted response" button
+   - Save response JSON files to `{VIEWER_DIR}/responses/`
+   - The button opens `{VIEWER_URL}?id={response_id}` in Telegram's built-in browser
+
+#### Local Development (without nginx)
+
+**Quick rendering check (browser only):**
+
+To verify that LaTeX, code blocks, and tables render correctly — no nginx or tunnel needed:
+
+```bash
+# Create a sample response in the repo's viewer directory
+mkdir -p viewer/responses
+echo '{"content": "# Test\n\nFormula: $$E = mc^2$$\n\n```python\nprint(\"hello\")\n```"}' \
+  > viewer/responses/test.json
+
+# Serve locally
+cd viewer && python3 -m http.server 8080
+
+# Open in browser: http://localhost:8080/?id=test
+```
+
+**Full end-to-end testing (with ngrok):**
+
+The bot needs an HTTPS URL to send as a button link. Use [ngrok](https://ngrok.com/) to expose the local server:
+
+```bash
+# 1. Serve the viewer directory
+cd viewer && python3 -m http.server 8080 &
+
+# 2. Start ngrok tunnel (install: brew install ngrok)
+ngrok http 8080
+
+# ngrok will show a public URL like: https://abc123.ngrok-free.app
+
+# 3. Run the bot with the ngrok URL and local viewer dir
+export MYBUDDYBOT_VIEWER_URL="https://abc123.ngrok-free.app/"
+export MYBUDDYBOT_VIEWER_DIR="$(pwd)/viewer"
+./debug/MyBuddyBot
+```
+
+Now send a message that triggers a LaTeX response from the AI — the bot will save the JSON to `viewer/responses/`, send a button, and tapping it opens the viewer via the ngrok tunnel.
+
+> **Tip:** The ngrok URL changes on every restart (free tier). Update `MYBUDDYBOT_VIEWER_URL` accordingly, or use a paid ngrok plan for a stable subdomain.
+
+**Note:** Both `MYBUDDYBOT_VIEWER_URL` and `MYBUDDYBOT_VIEWER_DIR` must be set for the feature to activate. If either is missing, the bot works normally without the viewer button. Plain text responses (no LaTeX) never trigger the button.
 
 ## Testing
 

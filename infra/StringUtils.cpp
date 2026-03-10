@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 
 namespace mbb
 {
@@ -24,6 +25,86 @@ std::string StringUtils::NormalizeUsername(std::string value)
     std::transform(normalized.begin(), normalized.end(), normalized.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return normalized;
+}
+
+bool StringUtils::ContainsLatex(const std::string& text)
+{
+    bool inCodeBlock = false;
+
+    for (size_t i = 0; i < text.size(); ++i)
+    {
+        // Check for fenced code block toggle
+        if (i + 2 < text.size() && text[i] == '`' && text[i + 1] == '`' && text[i + 2] == '`')
+        {
+            if (!inCodeBlock)
+            {
+                // Opening fence — check if language tag is latex/tex
+                size_t langStart = i + 3;
+                size_t lineEnd = text.find('\n', langStart);
+                if (lineEnd == std::string::npos)
+                {
+                    lineEnd = text.size();
+                }
+                std::string lang = text.substr(langStart, lineEnd - langStart);
+                // Trim and lowercase
+                lang.erase(lang.begin(),
+                           std::find_if(lang.begin(), lang.end(), [](unsigned char c) { return !std::isspace(c); }));
+                lang.erase(
+                    std::find_if(lang.rbegin(), lang.rend(), [](unsigned char c) { return !std::isspace(c); }).base(),
+                    lang.end());
+                std::transform(lang.begin(), lang.end(), lang.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (lang == "latex" || lang == "tex")
+                {
+                    return true;
+                }
+            }
+            inCodeBlock = !inCodeBlock;
+            i += 2;
+            continue;
+        }
+
+        if (inCodeBlock)
+        {
+            continue;
+        }
+
+        // Check for $$ (display math)
+        if (i + 1 < text.size() && text[i] == '$' && text[i + 1] == '$')
+        {
+            return true;
+        }
+
+        // Check for \( or \[
+        if (i + 1 < text.size() && text[i] == '\\' && (text[i + 1] == '(' || text[i + 1] == '['))
+        {
+            return true;
+        }
+
+        // Check for \begin{ (LaTeX environments: equation, align, gather, etc.)
+        if (text.compare(i, 7, "\\begin{") == 0)
+        {
+            return true;
+        }
+
+        // Check for common LaTeX math commands
+        if (text[i] == '\\')
+        {
+            for (const char* cmd :
+                 {"frac{",    "sqrt{",   "sum",    "int",     "prod",    "lim",   "infty",     "alpha",      "beta",
+                  "gamma",    "delta",   "theta",  "lambda",  "sigma",   "omega", "partial",   "nabla",      "cdot",
+                  "times",    "equiv",   "approx", "neq",     "leq",     "geq",   "leftarrow", "rightarrow", "mathbb{",
+                  "mathcal{", "mathrm{", "text{",  "textbf{", "textit{", "LaTeX"})
+            {
+                if (text.compare(i + 1, std::strlen(cmd), cmd) == 0)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
 }
 
 } // namespace mbb

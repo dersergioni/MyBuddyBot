@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <fstream>
+#include <mutex>
 #include <random>
 #include <stdexcept>
 
@@ -64,6 +65,32 @@ void FileUtils::WriteBinaryFile(const std::filesystem::path& path, const std::st
     }
 
     file.write(data.data(), static_cast<std::streamsize>(data.size()));
+}
+
+void FileUtils::WriteTextFile(const std::filesystem::path& path, const std::string& content)
+{
+    std::filesystem::create_directories(path.parent_path());
+
+    std::ofstream file(path, std::ios::binary);
+    if (!file)
+    {
+        throw std::runtime_error(fmt::format("Failed to open file for writing: {}", path.string()));
+    }
+
+    file.write(content.data(), static_cast<std::streamsize>(content.size()));
+}
+
+std::string FileUtils::GenerateUniqueId()
+{
+    static std::mutex mutex;
+    static std::mt19937 rng(std::random_device{}());
+    static std::uniform_int_distribution<int> dist(10000, 99999);
+
+    std::lock_guard lock(mutex);
+    auto timestamp =
+        std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    auto random = dist(rng);
+    return fmt::format("{:x}_{:05d}", timestamp, random);
 }
 
 void FileUtils::RemoveFile(const std::filesystem::path& path)

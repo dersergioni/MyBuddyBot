@@ -27,6 +27,13 @@ class TelegramApi
                                     const std::string& text,
                                     const std::string& parseMode = "HTML");
 
+    // Send text message with an inline URL button
+    TgBot::Message::Ptr SendMessageWithUrlButton(int64_t chatId,
+                                                 int32_t threadId,
+                                                 const std::string& text,
+                                                 const std::string& buttonLabel,
+                                                 const std::string& url);
+
     // Send photo by URL
     TgBot::Message::Ptr SendPhoto(int64_t chatId,
                                   int32_t threadId,

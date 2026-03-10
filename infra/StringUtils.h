@@ -10,6 +10,7 @@ class StringUtils
   public:
     [[nodiscard]] static std::string TrimCopy(std::string value);
     [[nodiscard]] static std::string NormalizeUsername(std::string value);
+    [[nodiscard]] static bool ContainsLatex(const std::string& text);
 };
 
 } // namespace mbb

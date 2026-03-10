@@ -74,8 +74,7 @@ std::string ExtractOutputTextFromResponse(const rapidjson::Value& response)
 }
 } // namespace
 
-OpenAiService::OpenAiService(std::shared_ptr<IMessageWorker> messageWorker)
-    : IAiService(std::move(messageWorker))
+OpenAiService::OpenAiService(std::shared_ptr<IMessageWorker> messageWorker) : IAiService(std::move(messageWorker))
 {
     const auto& apiKey = Config::GetOpenAiToken();
 
@@ -138,8 +137,8 @@ bool OpenAiService::ExtractStreamContent(const std::string& jsonChunk, StreamSta
                 if (!content.empty())
                 {
                     state.responseText += content;
-                    state.workerId = messageWorker_->AddMessagePortion(state.workerId, state.chatId,
-                                                                             state.threadId, state.responseText);
+                    state.workerId = messageWorker_->AddMessagePortion(state.workerId, state.chatId, state.threadId,
+                                                                       state.responseText);
                 }
             }
             else if (json.HasMember("text") && json["text"].IsString())
@@ -149,8 +148,8 @@ bool OpenAiService::ExtractStreamContent(const std::string& jsonChunk, StreamSta
                 if (!content.empty())
                 {
                     state.responseText += content;
-                    state.workerId = messageWorker_->AddMessagePortion(state.workerId, state.chatId,
-                                                                             state.threadId, state.responseText);
+                    state.workerId = messageWorker_->AddMessagePortion(state.workerId, state.chatId, state.threadId,
+                                                                       state.responseText);
                 }
             }
         }
@@ -172,8 +171,8 @@ bool OpenAiService::ExtractStreamContent(const std::string& jsonChunk, StreamSta
                 // Some responses include the final output in a nested response object.
                 state.responseText = ExtractOutputTextFromResponse(json["response"]);
             }
-            state.workerId = messageWorker_->AddMessagePortion(state.workerId, state.chatId, state.threadId,
-                                                                     state.responseText);
+            state.workerId =
+                messageWorker_->AddMessagePortion(state.workerId, state.chatId, state.threadId, state.responseText);
             return true;
         }
 
@@ -192,8 +191,8 @@ bool OpenAiService::ExtractStreamContent(const std::string& jsonChunk, StreamSta
     {
         if (strcmp(choices[0]["finish_reason"].GetString(), "stop") == 0)
         {
-            state.workerId = messageWorker_->AddMessagePortion(state.workerId, state.chatId, state.threadId,
-                                                                     state.responseText);
+            state.workerId =
+                messageWorker_->AddMessagePortion(state.workerId, state.chatId, state.threadId, state.responseText);
             return true;
         }
     }
@@ -207,8 +206,8 @@ bool OpenAiService::ExtractStreamContent(const std::string& jsonChunk, StreamSta
             if (!content.empty())
             {
                 state.responseText += content;
-                state.workerId = messageWorker_->AddMessagePortion(state.workerId, state.chatId, state.threadId,
-                                                                         state.responseText);
+                state.workerId =
+                    messageWorker_->AddMessagePortion(state.workerId, state.chatId, state.threadId, state.responseText);
             }
         }
     }

@@ -9,6 +9,7 @@
 #include "FileUtilsTest.h"
 #include "HttpClientTest.h"
 #include "IntegrationTest.h"
+#include "LatexDetectionTest.h"
 #include "LoggerTest.h"
 #include "MessageWorkerTest.h"
 #include "StorageTest.h"

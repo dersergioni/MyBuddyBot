@@ -22,6 +22,9 @@ data/
 *.db
 *.log
 
+# Viewer responses (generated at runtime)
+viewer/responses/
+
 # Secrets
 .env
 run_bot.sh

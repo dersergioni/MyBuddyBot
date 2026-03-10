@@ -1,7 +1,10 @@
 #include "telegram/MessageWorker.h"
 
+#include "core/Config.h"
 #include "core/Logger.h"
 #include "ext/md4c/md4c-html.h"
+#include "infra/ResponseSaver.h"
+#include "infra/StringUtils.h"
 #include "telegram/TelegramApi.h"
 
 #include <fmt/core.h>
@@ -139,6 +142,32 @@ void MessageWorker::ProcessMessageBlock(MessageBlock& block)
         if (subBlock.isFilled && (subBlock.finalizedAttempts-- <= 0 || result))
         {
             subBlock.isReadyToDelete = true;
+        }
+    }
+
+    // Send viewer button when all subBlocks are done and response contains LaTeX
+    if (!block.viewerButtonSent)
+    {
+        bool hasUrl = !Config::GetViewerUrl().empty();
+        bool hasDir = !Config::GetViewerDir().empty();
+        bool allDone =
+            std::ranges::all_of(block.subBlocks, [](const TgMessageSubBlock& sub) { return sub.isReadyToDelete; });
+        bool hasLatex = allDone && StringUtils::ContainsLatex(block.incomingText);
+
+        if (hasUrl && hasDir && allDone && hasLatex)
+        {
+            auto responseId = ResponseSaver::SaveResponse(block.incomingText);
+            if (!responseId.empty())
+            {
+                auto viewerUrl = ResponseSaver::BuildViewerUrl(responseId);
+                api->SendMessageWithUrlButton(block.chatId, block.threadId, "View full response:", "Open in viewer",
+                                              viewerUrl);
+            }
+            else
+            {
+                Logger::Error("[Viewer] ResponseSaver::SaveResponse returned empty ID");
+            }
+            block.viewerButtonSent = true;
         }
     }
 }

@@ -39,6 +39,8 @@ std::unordered_set<std::string> Config::allowlistUsernames_;
 std::unordered_set<int64_t> Config::blocklistIds_;
 std::unordered_set<std::string> Config::blocklistUsernames_;
 std::unordered_set<int64_t> Config::adminIds_;
+std::string Config::viewerUrl_;
+std::filesystem::path Config::viewerDir_;
 
 namespace
 {
@@ -226,6 +228,28 @@ void Config::Init()
                              "block_usernames={}, admin_ids={}",
                              allowlistIds_.size(), allowlistUsernames_.size(), blocklistIds_.size(),
                              blocklistUsernames_.size(), adminIds_.size()));
+
+    viewerUrl_ = StringUtils::TrimCopy(Env::GetOptional("MYBUDDYBOT_VIEWER_URL"));
+    if (!viewerUrl_.empty())
+    {
+        Logger::Info(fmt::format("Viewer URL: {}", viewerUrl_));
+    }
+
+    const auto viewerDirEnv = Env::GetOptional("MYBUDDYBOT_VIEWER_DIR");
+    if (!viewerDirEnv.empty())
+    {
+        viewerDir_ = ToAbsolutePath(viewerDirEnv);
+        Logger::Info(fmt::format("Viewer dir: {}", viewerDir_));
+    }
+
+    if (!viewerUrl_.empty() && !viewerDir_.empty())
+    {
+        Logger::Info("Viewer feature: ENABLED");
+    }
+    else if (!viewerUrl_.empty() || !viewerDir_.empty())
+    {
+        Logger::Error("Viewer feature: DISABLED (both MYBUDDYBOT_VIEWER_URL and MYBUDDYBOT_VIEWER_DIR must be set)");
+    }
 
     enabledProviders_.clear();
     if (!openAiToken_.empty())

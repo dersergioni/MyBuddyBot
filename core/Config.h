@@ -101,6 +101,14 @@ class Config
     {
         return adminIds_;
     }
+    [[nodiscard]] static const std::string& GetViewerUrl()
+    {
+        return viewerUrl_;
+    }
+    [[nodiscard]] static const std::filesystem::path& GetViewerDir()
+    {
+        return viewerDir_;
+    }
     [[nodiscard]] static bool IsAdminUser(int64_t userId);
     [[nodiscard]] static bool IsUserAuthorized(int64_t userId, const std::string& username);
 
@@ -127,6 +135,8 @@ class Config
     static std::unordered_set<int64_t> blocklistIds_;
     static std::unordered_set<std::string> blocklistUsernames_;
     static std::unordered_set<int64_t> adminIds_;
+    static std::string viewerUrl_;
+    static std::filesystem::path viewerDir_;
 };
 
 } // namespace mbb

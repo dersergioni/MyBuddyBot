@@ -19,9 +19,9 @@ class IMessageWorker
     virtual void Stop() = 0;
 
     virtual std::optional<uint32_t> AddMessagePortion(std::optional<uint32_t> id,
-                                                       int64_t chatId,
-                                                       int32_t threadId,
-                                                       const std::string& responseText) = 0;
+                                                      int64_t chatId,
+                                                      int32_t threadId,
+                                                      const std::string& responseText) = 0;
 
     virtual void FinalizeMessage(std::optional<uint32_t> id) = 0;
 };

@@ -41,6 +41,38 @@ TgBot::Message::Ptr TelegramApi::SendMessage(int64_t chatId,
     }
 }
 
+TgBot::Message::Ptr TelegramApi::SendMessageWithUrlButton(
+    int64_t chatId, int32_t threadId, const std::string& text, const std::string& buttonLabel, const std::string& url)
+{
+    try
+    {
+        auto button = std::make_shared<TgBot::InlineKeyboardButton>();
+        button->text = buttonLabel;
+        button->url = url;
+
+        auto keyboard = std::make_shared<TgBot::InlineKeyboardMarkup>();
+        keyboard->inlineKeyboard = {{button}};
+
+        std::lock_guard<std::mutex> lock(apiMutex_);
+        return bot_->getApi().sendMessage(chatId, text,
+                                          nullptr,  // linkPreviewOptions
+                                          nullptr,  // replyParameters
+                                          keyboard, // replyMarkup
+                                          "HTML",
+                                          true, // disableNotification
+                                          {},   // entities
+                                          threadId,
+                                          false, // protectContent
+                                          ""     // businessConnectionId
+        );
+    }
+    catch (const std::exception& e)
+    {
+        Logger::Error(fmt::format("Failed to send message with URL button: {}", e.what()));
+        return nullptr;
+    }
+}
+
 TgBot::Message::Ptr TelegramApi::SendPhoto(int64_t chatId,
                                            int32_t threadId,
                                            const std::string& photoUrl,

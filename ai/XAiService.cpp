@@ -74,8 +74,7 @@ std::string ExtractOutputTextFromResponse(const rapidjson::Value& response)
 }
 } // namespace
 
-XAiService::XAiService(std::shared_ptr<IMessageWorker> messageWorker)
-    : IAiService(std::move(messageWorker))
+XAiService::XAiService(std::shared_ptr<IMessageWorker> messageWorker) : IAiService(std::move(messageWorker))
 {
     const auto& apiKey = Config::GetXAiToken();
 
@@ -150,8 +149,8 @@ bool XAiService::ExtractStreamContent(const std::string& jsonChunk, StreamState&
             if (!content.empty())
             {
                 state.responseText += content;
-                state.workerId = messageWorker_->AddMessagePortion(state.workerId, state.chatId, state.threadId,
-                                                                         state.responseText);
+                state.workerId =
+                    messageWorker_->AddMessagePortion(state.workerId, state.chatId, state.threadId, state.responseText);
             }
         }
         else if (json.HasMember("text") && json["text"].IsString())
@@ -161,8 +160,8 @@ bool XAiService::ExtractStreamContent(const std::string& jsonChunk, StreamState&
             if (!content.empty())
             {
                 state.responseText += content;
-                state.workerId = messageWorker_->AddMessagePortion(state.workerId, state.chatId, state.threadId,
-                                                                         state.responseText);
+                state.workerId =
+                    messageWorker_->AddMessagePortion(state.workerId, state.chatId, state.threadId, state.responseText);
             }
         }
     }

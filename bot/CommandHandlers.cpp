@@ -397,8 +397,7 @@ void CommandHandlers::HandleHealth(const TgBot::Message::Ptr& message)
                                            "providers: OpenAI={}, xAI={}, Google={}\n"
                                            "active provider: {}\n"
                                            "active model: {} ({})",
-                                           Config::GetBotName(),
-                                           MYBUDDYBOT_VERSION, MYBUDDYBOT_GIT_COMMIT,
+                                           Config::GetBotName(), MYBUDDYBOT_VERSION, MYBUDDYBOT_GIT_COMMIT,
                                            Config::IsDebugMode() ? "on" : "off", Config::GetDbPath().string(),
                                            Config::GetStatePath().string(), GetProviderStatus(AiProvider::OpenAI),
                                            GetProviderStatus(AiProvider::XAI), GetProviderStatus(AiProvider::Google),

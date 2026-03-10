@@ -46,6 +46,7 @@ struct MessageBlock
     int64_t chatId;
     int32_t threadId;
     bool isReadyToFinalize;
+    bool viewerButtonSent = false;
     std::string incomingText;
     std::vector<TgMessageSubBlock> subBlocks;
 };

@@ -245,8 +245,8 @@ void BotApp::RegisterHandlers()
     bot_->getEvents().onCommand("clear",
                                 [this](const TgBot::Message::Ptr& message) { handlers_->HandleClear(message); });
 
-    bot_->getEvents().onCommand("switch_provider",
-                                [this](const TgBot::Message::Ptr& message) { handlers_->HandleSwitchProvider(message); });
+    bot_->getEvents().onCommand(
+        "switch_provider", [this](const TgBot::Message::Ptr& message) { handlers_->HandleSwitchProvider(message); });
 
     bot_->getEvents().onCommand("switch_model",
                                 [this](const TgBot::Message::Ptr& message) { handlers_->HandleSwitchModel(message); });
