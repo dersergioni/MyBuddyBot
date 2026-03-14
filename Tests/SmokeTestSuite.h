@@ -13,6 +13,7 @@
 #include "LoggerTest.h"
 #include "MessageWorkerTest.h"
 #include "StorageTest.h"
+#include "TelegramHtmlFormatterTest.h"
 #include "UserStateTest.h"
 
 #endif // SMOKETESTSUITE_H

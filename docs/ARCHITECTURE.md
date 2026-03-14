@@ -18,6 +18,7 @@ graph TD
         TelegramApi
         MediaDownloader
         MessageWorker
+        MessageSplitter
     end
 
     subgraph AI["AI Layer"]
@@ -32,6 +33,7 @@ graph TD
         HttpClient
         AudioConverter
         ResponseSaver
+        TelegramHtmlFormatter
         Base64
         FileUtils
         StringUtils
@@ -86,7 +88,7 @@ sequenceDiagram
 |--------|-------|----------------|
 | **Main polling thread** | 1 | Runs `BotApp::Run()` — calls `getUpdates` in a loop (3 s timeout) and dispatches each update to `CommandHandlers`. |
 | **TaskQueue workers** | *N* (default = CPU count, override with `MYBUDDYBOT_WORKER_THREADS`) | Execute async tasks (`ProcessTextAsync`, `ProcessVoiceAsync`, `ProcessImageAsync`). Each task calls the AI service, stores history in `Storage`, and pushes streaming chunks to `MessageWorker`. |
-| **MessageWorker thread** | 1 | Singleton background loop that wakes every 3 s (or on new data). Batches streaming chunks, splits long messages at the 4096-char Telegram limit, converts Markdown to HTML, and sends/edits messages via `TelegramApi`. |
+| **MessageWorker thread** | 1 | Singleton background loop that wakes every 3 s (or on new data). Batches streaming chunks and sends/edits messages via `TelegramApi`. Delegates text splitting to `MessageSplitter` and Markdown→HTML conversion to `TelegramHtmlFormatter`. |
 
 All shared state is protected by mutexes:
 

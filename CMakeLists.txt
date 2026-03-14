@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.30)
 
-project(MyBuddyBot VERSION 1.1.0 LANGUAGES C CXX)
+project(MyBuddyBot VERSION 1.2.0 LANGUAGES C CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -97,10 +97,12 @@ set(PROJECT_SOURCES
     infra/AudioConverter.cpp
     infra/ResponseSaver.cpp
     infra/TaskQueue.cpp
+    infra/TelegramHtmlFormatter.cpp
 
     # telegram
     telegram/TelegramApi.cpp
     telegram/MediaDownloader.cpp
+    telegram/MessageSplitter.cpp
     telegram/MessageWorker.cpp
 
     # ai
