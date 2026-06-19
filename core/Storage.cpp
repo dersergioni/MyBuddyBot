@@ -2,7 +2,7 @@
 
 #include "core/Logger.h"
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 
 namespace mbb
 {
@@ -87,6 +87,11 @@ class SqliteStmt
     [[nodiscard]] int columnInt(int idx) const
     {
         return sqlite3_column_int(stmt_, idx);
+    }
+
+    [[nodiscard]] int64_t columnInt64(int idx) const
+    {
+        return sqlite3_column_int64(stmt_, idx);
     }
 
     [[nodiscard]] std::string columnText(int idx) const
@@ -201,6 +206,26 @@ void Storage::InitDb()
     const char* IDX_GPT_CHAT_MSG_ID = "CREATE INDEX IF NOT EXISTS idx_gpt_chat_msg_id_chat_thread "
                                       "ON GPT_CHAT_MSG_ID (CHAT_ID, THREAD_ID, MESSAGE_ID);";
     CreateTable(IDX_GPT_CHAT_MSG_ID);
+
+    const char* USERS = "CREATE TABLE IF NOT EXISTS USERS ("
+                        "USER_ID INTEGER PRIMARY KEY,"
+                        "USERNAME TEXT,"
+                        "FIRST_NAME TEXT NOT NULL,"
+                        "UPDATED_AT DATETIME DEFAULT CURRENT_TIMESTAMP"
+                        ");";
+    CreateTable(USERS);
+
+    const char* IDX_USERS_USERNAME = "CREATE INDEX IF NOT EXISTS idx_users_username "
+                                     "ON USERS (USERNAME);";
+    CreateTable(IDX_USERS_USERNAME);
+
+    const char* CHATS = "CREATE TABLE IF NOT EXISTS CHATS ("
+                        "CHAT_ID INTEGER NOT NULL,"
+                        "THREAD_ID INTEGER NOT NULL DEFAULT 0,"
+                        "UPDATED_AT DATETIME DEFAULT CURRENT_TIMESTAMP,"
+                        "PRIMARY KEY (CHAT_ID, THREAD_ID)"
+                        ");";
+    CreateTable(CHATS);
 }
 
 void Storage::CreateTable(const std::string& sql)
@@ -379,6 +404,91 @@ std::vector<std::pair<std::string, std::string>> Storage::SelectActualUserChatHi
         result.insert(result.begin(), std::make_pair("system", systemMsg));
     }
 
+    return result;
+}
+
+// =============================================================================
+// User Registry
+// =============================================================================
+
+void Storage::UpsertUser(int64_t userId, const std::string& username, const std::string& firstName)
+{
+    std::lock_guard<std::mutex> lock(dbMutex);
+
+    SqliteStmt stmt(db.get(), "INSERT INTO USERS (USER_ID, USERNAME, FIRST_NAME, UPDATED_AT) "
+                              "VALUES (?, ?, ?, CURRENT_TIMESTAMP) "
+                              "ON CONFLICT(USER_ID) DO UPDATE SET "
+                              "USERNAME = excluded.USERNAME, "
+                              "FIRST_NAME = excluded.FIRST_NAME, "
+                              "UPDATED_AT = CURRENT_TIMESTAMP;");
+    stmt.bindInt64(1, userId);
+    stmt.bindText(2, username);
+    stmt.bindText(3, firstName);
+    stmt.exec();
+}
+
+int64_t Storage::LookupUserByUsername(const std::string& username)
+{
+    std::lock_guard<std::mutex> lock(dbMutex);
+
+    SqliteStmt stmt(db.get(), "SELECT USER_ID FROM USERS WHERE USERNAME = ? LIMIT 1;");
+    stmt.bindText(1, username);
+
+    if (stmt.next())
+    {
+        return stmt.columnInt64(0);
+    }
+    return 0;
+}
+
+std::string Storage::GetUserDisplayName(int64_t userId)
+{
+    std::lock_guard<std::mutex> lock(dbMutex);
+
+    SqliteStmt stmt(db.get(), "SELECT USERNAME, FIRST_NAME FROM USERS WHERE USER_ID = ? LIMIT 1;");
+    stmt.bindInt64(1, userId);
+
+    if (stmt.next())
+    {
+        auto username = stmt.columnText(0);
+        auto firstName = stmt.columnText(1);
+        if (!username.empty())
+        {
+            return fmt::format("{} (@{})", firstName, username);
+        }
+        return firstName;
+    }
+    return fmt::format("User {}", userId);
+}
+
+// =============================================================================
+// Chat Registry
+// =============================================================================
+
+void Storage::UpsertChat(int64_t chatId, int32_t threadId)
+{
+    std::lock_guard<std::mutex> lock(dbMutex);
+
+    SqliteStmt stmt(db.get(), "INSERT INTO CHATS (CHAT_ID, THREAD_ID, UPDATED_AT) "
+                              "VALUES (?, ?, CURRENT_TIMESTAMP) "
+                              "ON CONFLICT(CHAT_ID, THREAD_ID) DO UPDATE SET "
+                              "UPDATED_AT = CURRENT_TIMESTAMP;");
+    stmt.bindInt64(1, chatId);
+    stmt.bindInt(2, threadId);
+    stmt.exec();
+}
+
+std::vector<std::pair<int64_t, int32_t>> Storage::SelectAllChats()
+{
+    std::lock_guard<std::mutex> lock(dbMutex);
+
+    SqliteStmt stmt(db.get(), "SELECT CHAT_ID, THREAD_ID FROM CHATS;");
+
+    std::vector<std::pair<int64_t, int32_t>> result;
+    while (stmt.next())
+    {
+        result.emplace_back(stmt.columnInt64(0), stmt.columnInt(1));
+    }
     return result;
 }
 

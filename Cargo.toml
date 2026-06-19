@@ -1,0 +1,3 @@
+[workspace]
+resolver = "3"
+members = ["modules/wishlist/telegram", "modules/wishlist/core", "modules/wishlist/sqlite"]

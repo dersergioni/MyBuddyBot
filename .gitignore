@@ -5,6 +5,7 @@ debug/
 release/
 out/
 Testing/
+target/
 
 # IDEs
 .idea/
@@ -20,6 +21,7 @@ Testing/
 # Data
 data/
 *.db
+*.bin
 *.log
 
 # Viewer responses (generated at runtime)
@@ -27,4 +29,6 @@ viewer/responses/
 
 # Secrets
 .env
-run_bot.sh
+ai-config.json
+*.local.sh
+

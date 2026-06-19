@@ -3,11 +3,10 @@
 
 #include "../bot/BotApp.h"
 #include "../core/Config.h"
+#include "../infra/StringUtils.h"
 
 #include <gtest/gtest.h>
 
-#include <algorithm>
-#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <future>
@@ -29,10 +28,7 @@ bool HasEnv(const char* name)
 
 std::string NormalizeEnvValue(const char* value)
 {
-    std::string normalized = value ? value : "";
-    std::transform(normalized.begin(), normalized.end(), normalized.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return normalized;
+    return StringUtils::ToLower(value ? value : "");
 }
 
 bool IsTruthy(const char* value)

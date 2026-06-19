@@ -41,6 +41,7 @@ class NoopMessageWorker final : public IMessageWorker
 class TestAiService : public IAiService
 {
   public:
+    using IAiService::IsQuotaError;
     using IAiService::StreamState;
     using IAiService::TextStreamCallback;
 
@@ -154,6 +155,61 @@ TEST(AiServiceSseTest, IgnoresEventLinesAndParsesData)
 
     ASSERT_EQ(1u, service.chunks.size());
     EXPECT_EQ("{\"foo\":4}", service.chunks[0]);
+}
+
+TEST(AiServiceQuotaTest, DetectsOpenAiInsufficientQuotaByCode)
+{
+    EXPECT_TRUE(TestAiService::IsQuotaError("insufficient_quota", "You exceeded your current quota"));
+}
+
+TEST(AiServiceQuotaTest, DetectsQuotaByMessageOnly)
+{
+    EXPECT_TRUE(TestAiService::IsQuotaError("", "You exceeded your current quota, please check your plan and billing"));
+}
+
+TEST(AiServiceQuotaTest, DetectsGeminiResourceExhaustedByStatusCode)
+{
+    EXPECT_TRUE(TestAiService::IsQuotaError("RESOURCE_EXHAUSTED", "Quota exceeded for metric"));
+}
+
+TEST(AiServiceQuotaTest, DetectsBillingCode)
+{
+    EXPECT_TRUE(TestAiService::IsQuotaError("billing_hard_limit_reached", ""));
+}
+
+TEST(AiServiceQuotaTest, IgnoresTransientAndUnrelatedErrors)
+{
+    EXPECT_FALSE(TestAiService::IsQuotaError("rate_limit_exceeded", "Rate limit reached, please slow down"));
+    EXPECT_FALSE(TestAiService::IsQuotaError("server_error", "The server had an error processing your request"));
+    EXPECT_FALSE(TestAiService::IsQuotaError("invalid_api_key", "Incorrect API key provided"));
+    EXPECT_FALSE(TestAiService::IsQuotaError("", ""));
+}
+
+TEST(AiServiceQuotaTest, StreamErrorEventRecordsQuotaFlag)
+{
+    TestAiService service;
+    TestAiService::StreamState state{};
+    state.service = &service;
+
+    const std::string chunk =
+        "data: {\"error\":{\"code\":\"insufficient_quota\",\"message\":\"You exceeded your current quota\"}}\n\n";
+    TestAiService::TextStreamCallback(const_cast<char*>(chunk.data()), 1, chunk.size(), &state);
+
+    ASSERT_TRUE(state.streamError.has_value());
+    EXPECT_TRUE(state.streamErrorIsQuota);
+}
+
+TEST(AiServiceQuotaTest, StreamErrorWithoutQuotaSignatureIsNotQuota)
+{
+    TestAiService service;
+    TestAiService::StreamState state{};
+    state.service = &service;
+
+    const std::string chunk = "data: {\"error\":{\"type\":\"server_error\",\"message\":\"Internal failure\"}}\n\n";
+    TestAiService::TextStreamCallback(const_cast<char*>(chunk.data()), 1, chunk.size(), &state);
+
+    ASSERT_TRUE(state.streamError.has_value());
+    EXPECT_FALSE(state.streamErrorIsQuota);
 }
 
 } // namespace mbb::tests

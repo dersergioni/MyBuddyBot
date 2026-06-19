@@ -22,23 +22,28 @@ See the [README.md](README.md) for detailed build instructions.
 Quick start:
 ```bash
 # Install dependencies (macOS)
-brew install cmake ninja boost openssl curl fmt rapidjson sqlite3 googletest
+brew install cmake ninja boost openssl curl fmt rapidjson sqlite3 googletest ffmpeg
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # Build
 cmake -DCMAKE_BUILD_TYPE=Debug -G Ninja -B build
 cmake --build build
 
 # Run tests
-cd build && ctest --output-on-failure
+ctest --test-dir build --output-on-failure
+cargo test
 ```
+
+The Wishlist module lives in a small Rust workspace at the repository root and is built automatically by CMake via Corrosion. The workspace is split into `modules/wishlist/telegram`, `modules/wishlist/core`, and `modules/wishlist/sqlite`.
 
 ## Code Style
 
-- **Language:** C++20
+- **Languages:** C++20 and Rust
 - **Formatting:** Use the `.clang-format` file in the repository root
   ```bash
   clang-format -i <file>
   ```
+- **Rust formatting:** Run `cargo fmt --all` from the repository root for Rust changes
 - **Naming conventions:**
   - Classes/Methods: `PascalCase`
   - Variables: `camelCase`

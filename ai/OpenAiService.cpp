@@ -4,7 +4,7 @@
 #include "core/Logger.h"
 #include "telegram/IMessageWorker.h"
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include <fmt/std.h>
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
@@ -78,23 +78,10 @@ OpenAiService::OpenAiService(std::shared_ptr<IMessageWorker> messageWorker) : IA
 {
     const auto& apiKey = Config::GetOpenAiToken();
 
-    primaryModel_ = {
-        .name = "gpt-5.2", .contextSize = 400 * 1024, .apiKey = apiKey, .url = "https://api.openai.com/v1/responses"};
-
-    secondaryModel_ = {.name = "o4-mini-deep-research",
-                       .contextSize = 200 * 1024,
-                       .apiKey = apiKey,
-                       .url = "https://api.openai.com/v1/responses"};
-
-    imageModel_ = {.name = "chatgpt-image-latest",
-                   .contextSize = 0,
-                   .apiKey = apiKey,
-                   .url = "https://api.openai.com/v1/images/generations"};
-
-    audioModel_ = {.name = "gpt-4o-audio-preview",
-                   .contextSize = 128 * 1024,
-                   .apiKey = apiKey,
-                   .url = "https://api.openai.com/v1/chat/completions"};
+    primaryModel_ = BuildModel(Config::GetModelSpec(AiProvider::OpenAI, "primary"), apiKey);
+    secondaryModel_ = BuildModel(Config::GetModelSpec(AiProvider::OpenAI, "secondary"), apiKey);
+    imageModel_ = BuildModel(Config::GetModelSpec(AiProvider::OpenAI, "image"), apiKey);
+    audioModel_ = BuildModel(Config::GetModelSpec(AiProvider::OpenAI, "audio"), apiKey);
 }
 
 // =============================================================================
@@ -153,7 +140,32 @@ bool OpenAiService::ExtractStreamContent(const std::string& jsonChunk, StreamSta
                 }
             }
         }
-        else if (strcmp(type, "response.failed") == 0 || strcmp(type, "response.incomplete") == 0)
+        else if (strcmp(type, "response.failed") == 0)
+        {
+            // Hard failure (e.g. exhausted quota). Surface it instead of ending empty.
+            std::string errorMsg = "OpenAI response failed";
+            std::string errorCode;
+            if (json.HasMember("response") && json["response"].IsObject() && json["response"].HasMember("error") &&
+                json["response"]["error"].IsObject())
+            {
+                const auto& err = json["response"]["error"];
+                if (err.HasMember("message") && err["message"].IsString())
+                {
+                    errorMsg = err["message"].GetString();
+                }
+                if (err.HasMember("code") && err["code"].IsString())
+                {
+                    errorCode = err["code"].GetString();
+                }
+            }
+            Logger::Error(fmt::format("OpenAI response.failed: {}", errorMsg));
+            if (IsQuotaError(errorCode, errorMsg))
+            {
+                throw AiQuotaException(errorMsg);
+            }
+            throw AiServiceException(errorMsg);
+        }
+        else if (strcmp(type, "response.incomplete") == 0)
         {
             std::string detail = jsonChunk.substr(0, 500);
             Logger::Error(fmt::format("OpenAI response event '{}': {}", type, detail));
@@ -527,20 +539,17 @@ AiResponse OpenAiService::GetTextResponse(int64_t chatId,
     StreamState state = {chatId, threadId, "", std::nullopt, "", "", {}, this};
     PostJsonStream(currentModel.url, authHeader, buffer.GetString(), state);
 
+    messageWorker_->FinalizeMessage(state.workerId);
+
     if (state.responseText.empty())
     {
-        Logger::Error(fmt::format("OpenAI streaming completed but responseText is empty (model: {}, workerId: {})",
-                                  currentModel.name,
-                                  state.workerId.has_value() ? std::to_string(*state.workerId) : "none"));
-    }
-    else
-    {
-        Logger::Debug(fmt::format("OpenAI streaming completed: {} chars (model: {}, workerId: {})",
-                                  state.responseText.size(), currentModel.name,
-                                  state.workerId.has_value() ? std::to_string(*state.workerId) : "none"));
+        Logger::Error(
+            fmt::format("OpenAI streaming completed but responseText is empty (model: {})", currentModel.name));
+        throw AiServiceException("The model returned an empty response. Please try again.");
     }
 
-    messageWorker_->FinalizeMessage(state.workerId);
+    Logger::Debug(
+        fmt::format("OpenAI streaming completed: {} chars (model: {})", state.responseText.size(), currentModel.name));
 
     return AiResponse{.text = state.responseText, .media = {}, .textStreamed = true};
 }

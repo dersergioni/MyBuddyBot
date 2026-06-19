@@ -107,10 +107,14 @@ class AccessControlConfigTest : public testing::Test
             "MYBUDDYBOT_BLOCKLIST_IDS",
             "MYBUDDYBOT_BLOCKLIST_USERNAMES",
             "MYBUDDYBOT_ADMIN_IDS",
+            "MYBUDDYBOT_AI_CONFIG_PATH",
         });
 
         Config::SetTestMode(true);
         SetBaseConfigEnv();
+        // These tests don't configure AI models, so providers stay disabled
+        // (allowed in test mode); clear any leaked/ambient config path.
+        UnsetEnvValue("MYBUDDYBOT_AI_CONFIG_PATH");
     }
 
     void TearDown() override

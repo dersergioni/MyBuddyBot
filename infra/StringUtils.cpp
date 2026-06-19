@@ -15,6 +15,13 @@ std::string StringUtils::TrimCopy(std::string value)
     return value;
 }
 
+std::string StringUtils::ToLower(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
 std::string StringUtils::NormalizeUsername(std::string value)
 {
     std::string normalized = TrimCopy(std::move(value));
@@ -22,9 +29,7 @@ std::string StringUtils::NormalizeUsername(std::string value)
     {
         normalized.erase(normalized.begin());
     }
-    std::transform(normalized.begin(), normalized.end(), normalized.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return normalized;
+    return ToLower(std::move(normalized));
 }
 
 bool StringUtils::ContainsLatex(const std::string& text)
@@ -45,15 +50,7 @@ bool StringUtils::ContainsLatex(const std::string& text)
                 {
                     lineEnd = text.size();
                 }
-                std::string lang = text.substr(langStart, lineEnd - langStart);
-                // Trim and lowercase
-                lang.erase(lang.begin(),
-                           std::find_if(lang.begin(), lang.end(), [](unsigned char c) { return !std::isspace(c); }));
-                lang.erase(
-                    std::find_if(lang.rbegin(), lang.rend(), [](unsigned char c) { return !std::isspace(c); }).base(),
-                    lang.end());
-                std::transform(lang.begin(), lang.end(), lang.begin(),
-                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                const std::string lang = ToLower(TrimCopy(text.substr(langStart, lineEnd - langStart)));
                 if (lang == "latex" || lang == "tex")
                 {
                     return true;

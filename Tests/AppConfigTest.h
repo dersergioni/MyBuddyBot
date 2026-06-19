@@ -8,6 +8,7 @@
 #include <clocale>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -83,6 +84,38 @@ TEST_F(ConfigTest, InitConfig)
     setenv("MYBUDDYBOT_STATE_PATH", "/root/var/db/mybuddy.state", 1);
     setenv("MYBUDDYBOT_NAME", "MyBuddyDevBot", 1);
 #endif
+
+    // The enabled-provider gate now requires a complete primary model from the AI
+    // config file, so point MYBUDDYBOT_AI_CONFIG_PATH at a temp file defining one
+    // for OpenAI (its key still comes from the OAI_API_TOKEN env var set above).
+    const std::filesystem::path aiConfigPath =
+        std::filesystem::temp_directory_path() / "mybuddybot-appconfigtest-ai-config.json";
+    {
+        std::ofstream out(aiConfigPath);
+        out << R"({"providers": {"openai": {"models": {"primary": {"name": "m", "url": "u", "contextSize": 1000}}}}})";
+    }
+#if defined(_WIN32)
+    _putenv_s("MYBUDDYBOT_AI_CONFIG_PATH", aiConfigPath.string().c_str());
+#else
+    setenv("MYBUDDYBOT_AI_CONFIG_PATH", aiConfigPath.string().c_str(), 1);
+#endif
+
+    // Remove the config file and env var even if an assertion below aborts the
+    // test, so a stale MYBUDDYBOT_AI_CONFIG_PATH cannot leak into later suites.
+    struct AiConfigCleanup
+    {
+        std::filesystem::path path;
+        ~AiConfigCleanup()
+        {
+#if defined(_WIN32)
+            _putenv_s("MYBUDDYBOT_AI_CONFIG_PATH", "");
+#else
+            unsetenv("MYBUDDYBOT_AI_CONFIG_PATH");
+#endif
+            std::error_code ec;
+            std::filesystem::remove(path, ec);
+        }
+    } aiConfigCleanup{aiConfigPath};
 
     Config::Init();
 

@@ -6,7 +6,7 @@
 #include "infra/HttpClient.h"
 #include "telegram/TelegramApi.h"
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 
 #include <stdexcept>
 

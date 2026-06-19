@@ -1,0 +1,12 @@
+[package]
+name = "wishlist_telegram"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+cxx = "1"
+wishlist_core = { path = "../core" }
+wishlist_sqlite = { path = "../sqlite" }

@@ -1,0 +1,18 @@
+[package]
+name = "wishlist_sqlite"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+wishlist_core = { path = "../core" }
+
+# Linux/macOS: bundle SQLite3 into the Rust staticlib (simple, self-contained).
+[target.'cfg(not(windows))'.dependencies]
+rusqlite = { version = "0.35", features = ["bundled"] }
+
+# Windows: link the system/vcpkg SQLite3 instead of bundling, so the Rust side
+# shares the same SQLite3 the C++ side links and we avoid duplicate sqlite3
+# symbols (LNK2005). CMakeLists.txt points libsqlite3-sys at it via
+# SQLITE3_LIB_DIR / SQLITE3_INCLUDE_DIR on Windows.
+[target.'cfg(windows)'.dependencies]
+rusqlite = { version = "0.35" }

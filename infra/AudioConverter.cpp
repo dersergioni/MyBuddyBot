@@ -1,6 +1,6 @@
 #include "AudioConverter.h"
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 
 #include <cstdlib>
 #include <stdexcept>

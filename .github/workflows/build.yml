@@ -43,6 +43,9 @@ jobs:
         brew update
         brew install cmake ninja boost openssl curl fmt rapidjson sqlite3 googletest ffmpeg
 
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
     - name: Cache tgbot-cpp
       uses: actions/cache@v4
       id: tgbot-cache
@@ -98,7 +101,9 @@ jobs:
       run: run-clang-tidy -p ${{ github.workspace }}/build '(ai|bot|core|infra|telegram|Tests|main)\.' || true
 
   windows-build:
-    runs-on: windows-latest
+    # Pinned to windows-2022: windows-latest moved to a newer image without the
+    # "Visual Studio 17 2022" generator, which broke the tgbot-cpp build.
+    runs-on: windows-2022
     timeout-minutes: 20
 
     steps:
@@ -108,6 +113,9 @@ jobs:
 
     - name: Set up MSVC
       uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
 
     - name: Bootstrap vcpkg
       shell: pwsh

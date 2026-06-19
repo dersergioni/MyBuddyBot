@@ -21,6 +21,7 @@ class UserState;
 class IAiService;
 class IMessageWorker;
 class CommandHandlers;
+class ModuleHost;
 
 namespace tests
 {
@@ -70,6 +71,7 @@ class BotApp
     std::shared_ptr<IAiService> xAiService_;
     std::shared_ptr<IAiService> googleService_;
     std::shared_ptr<CommandHandlers> handlers_;
+    std::shared_ptr<ModuleHost> moduleHost_;
 };
 
 } // namespace mbb

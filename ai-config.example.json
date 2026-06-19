@@ -1,0 +1,74 @@
+{
+  "providers": {
+    "openai": {
+      "apiKey": "YOUR_OPENAI_API_KEY",
+      "models": {
+        "primary": {
+          "name": "gpt-5.4-mini",
+          "url": "https://api.openai.com/v1/responses",
+          "contextSize": 400000
+        },
+        "secondary": {
+          "name": "gpt-5.5",
+          "url": "https://api.openai.com/v1/responses",
+          "contextSize": 1050000
+        },
+        "image": {
+          "name": "gpt-image-2",
+          "url": "https://api.openai.com/v1/images/generations",
+          "contextSize": 0
+        },
+        "audio": {
+          "name": "gpt-audio-1.5",
+          "url": "https://api.openai.com/v1/chat/completions",
+          "contextSize": 128000
+        }
+      }
+    },
+    "xai": {
+      "apiKey": "YOUR_XAI_API_KEY",
+      "models": {
+        "primary": {
+          "name": "grok-4.3",
+          "url": "https://api.x.ai/v1/responses",
+          "contextSize": 1000000
+        },
+        "secondary": {
+          "name": "grok-4.20-0309-reasoning",
+          "url": "https://api.x.ai/v1/responses",
+          "contextSize": 2000000
+        },
+        "image": {
+          "name": "grok-imagine-image-quality",
+          "url": "https://api.x.ai/v1/images/generations",
+          "contextSize": 0
+        }
+      }
+    },
+    "google": {
+      "apiKey": "YOUR_GOOGLE_API_KEY",
+      "models": {
+        "primary": {
+          "name": "gemini-3-flash-preview",
+          "url": "https://generativelanguage.googleapis.com/v1beta/models/",
+          "contextSize": 1048576
+        },
+        "secondary": {
+          "name": "gemini-3.1-pro-preview",
+          "url": "https://generativelanguage.googleapis.com/v1beta/models/",
+          "contextSize": 1048576
+        },
+        "image": {
+          "name": "gemini-3-pro-image",
+          "url": "https://generativelanguage.googleapis.com/v1beta/models/",
+          "contextSize": 0
+        },
+        "audio": {
+          "name": "gemini-3-flash-preview",
+          "url": "https://generativelanguage.googleapis.com/v1beta/models/",
+          "contextSize": 1048576
+        }
+      }
+    }
+  }
+}

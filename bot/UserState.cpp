@@ -10,7 +10,7 @@ namespace mbb
 
 namespace
 {
-constexpr uint32_t kStateFileVersion = 1;
+constexpr uint32_t kStateFileVersion = 3;
 } // namespace
 
 void UserState::SetDialogMode(const ChatKey& key, DialogMode mode)
@@ -150,6 +150,27 @@ bool UserState::IsFromLastProcessedMediaGroup(const ChatKey& key, const std::str
     return it != lastProcessedMediaGroupId_.end() && it->second == mediaGroupId;
 }
 
+void UserState::SetActiveModule(const ActiveModuleKey& key, const std::string& modulePrefix)
+{
+    std::lock_guard lock(mutex_);
+    activeModules_[key] = modulePrefix;
+    Save();
+}
+
+std::string UserState::GetActiveModule(const ActiveModuleKey& key) const
+{
+    std::lock_guard lock(mutex_);
+    auto it = activeModules_.find(key);
+    return (it != activeModules_.end()) ? it->second : std::string{};
+}
+
+void UserState::ClearActiveModule(const ActiveModuleKey& key)
+{
+    std::lock_guard lock(mutex_);
+    activeModules_.erase(key);
+    Save();
+}
+
 void UserState::Save() const
 {
     if (!statePath_.empty())
@@ -208,9 +229,22 @@ void UserState::WriteState(const std::filesystem::path& path) const
         file.write(reinterpret_cast<const char*>(&selectorByte), 1);
     }
 
+    // Section 4: activeModules
+    uint32_t activeModulesCount = static_cast<uint32_t>(activeModules_.size());
+    file.write(reinterpret_cast<const char*>(&activeModulesCount), 4);
+    for (const auto& [key, prefix] : activeModules_)
+    {
+        file.write(reinterpret_cast<const char*>(&key.chatId), 8);
+        file.write(reinterpret_cast<const char*>(&key.threadId), 4);
+        file.write(reinterpret_cast<const char*>(&key.userId), 8);
+        uint32_t len = static_cast<uint32_t>(prefix.size());
+        file.write(reinterpret_cast<const char*>(&len), 4);
+        file.write(prefix.data(), len);
+    }
+
     Logger::Debug("Saved state: " + std::to_string(aiProvidersCount) + " providers, " +
                   std::to_string(audioResponsesCount) + " audio settings, " + std::to_string(modelSelectorsCount) +
-                  " model selectors");
+                  " model selectors, " + std::to_string(activeModulesCount) + " active modules");
 }
 
 void UserState::LoadFromFile(const std::filesystem::path& path)
@@ -238,7 +272,7 @@ void UserState::LoadFromFile(const std::filesystem::path& path)
     uint32_t version;
     file.read(reinterpret_cast<char*>(&version), 4);
 
-    if (version != kStateFileVersion)
+    if (version < 1 || version > kStateFileVersion)
     {
         Logger::Info("Unknown state file version: " + std::to_string(version));
         return;
@@ -313,9 +347,51 @@ void UserState::LoadFromFile(const std::filesystem::path& path)
         }
     }
 
+    // Section 4: activeModules (added in v2, user-scoped in v3)
+    uint32_t activeModulesCount = 0;
+    if (version >= 2)
+    {
+        file.read(reinterpret_cast<char*>(&activeModulesCount), 4);
+        for (uint32_t i = 0; i < activeModulesCount; ++i)
+        {
+            int64_t chatId;
+            int32_t threadId;
+            int64_t userId = 0;
+            uint32_t len;
+
+            file.read(reinterpret_cast<char*>(&chatId), 8);
+            file.read(reinterpret_cast<char*>(&threadId), 4);
+            if (version >= 3)
+            {
+                file.read(reinterpret_cast<char*>(&userId), 8);
+            }
+            file.read(reinterpret_cast<char*>(&len), 4);
+
+            if (!file || len > 256)
+            {
+                Logger::Error("Error reading activeModules at entry " + std::to_string(i));
+                return;
+            }
+
+            std::string prefix(len, '\0');
+            file.read(prefix.data(), len);
+
+            if (!file)
+            {
+                Logger::Error("Error reading activeModules prefix at entry " + std::to_string(i));
+                return;
+            }
+
+            if (version >= 3)
+            {
+                activeModules_[{chatId, threadId, userId}] = std::move(prefix);
+            }
+        }
+    }
+
     Logger::Info("Loaded state: " + std::to_string(aiProvidersCount) + " providers, " +
                  std::to_string(audioResponsesCount) + " audio settings, " + std::to_string(modelSelectorsCount) +
-                 " model selectors");
+                 " model selectors, " + std::to_string(activeModulesCount) + " active modules");
 }
 
 } // namespace mbb

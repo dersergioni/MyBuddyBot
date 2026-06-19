@@ -4,7 +4,7 @@
 #include "core/Logger.h"
 #include "telegram/IMessageWorker.h"
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include <fmt/std.h>
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
@@ -78,23 +78,11 @@ XAiService::XAiService(std::shared_ptr<IMessageWorker> messageWorker) : IAiServi
 {
     const auto& apiKey = Config::GetXAiToken();
 
-    primaryModel_ = {.name = "grok-4-1-fast-reasoning",
-                     .contextSize = 2 * 1024 * 1024,
-                     .apiKey = apiKey,
-                     .url = "https://api.x.ai/v1/responses"};
-
-    secondaryModel_ = {.name = "grok-4-1-fast-non-reasoning",
-                       .contextSize = 2 * 1024 * 1024,
-                       .apiKey = apiKey,
-                       .url = "https://api.x.ai/v1/responses"};
-
-    imageModel_ = {.name = "grok-2-image-1212",
-                   .contextSize = 0,
-                   .apiKey = apiKey,
-                   .url = "https://api.x.ai/v1/images/generations"};
-
-    // xAI does not support audio
-    audioModel_ = {};
+    primaryModel_ = BuildModel(Config::GetModelSpec(AiProvider::XAI, "primary"), apiKey);
+    secondaryModel_ = BuildModel(Config::GetModelSpec(AiProvider::XAI, "secondary"), apiKey);
+    imageModel_ = BuildModel(Config::GetModelSpec(AiProvider::XAI, "image"), apiKey);
+    // xAI has no audio model; an "audio" entry in the config is ignored (GetModelName throws for it).
+    audioModel_ = BuildModel(Config::GetModelSpec(AiProvider::XAI, "audio"), apiKey);
 }
 
 const std::string& XAiService::GetModelName(ModelSelector selector) const
@@ -181,6 +169,31 @@ bool XAiService::ExtractStreamContent(const std::string& jsonChunk, StreamState&
         state.workerId =
             messageWorker_->AddMessagePortion(state.workerId, state.chatId, state.threadId, state.responseText);
         return true;
+    }
+    else if (strcmp(type, "response.failed") == 0)
+    {
+        // Hard failure (e.g. exhausted quota). Surface it instead of ending empty.
+        std::string errorMsg = "xAI response failed";
+        std::string errorCode;
+        if (json.HasMember("response") && json["response"].IsObject() && json["response"].HasMember("error") &&
+            json["response"]["error"].IsObject())
+        {
+            const auto& err = json["response"]["error"];
+            if (err.HasMember("message") && err["message"].IsString())
+            {
+                errorMsg = err["message"].GetString();
+            }
+            if (err.HasMember("code") && err["code"].IsString())
+            {
+                errorCode = err["code"].GetString();
+            }
+        }
+        Logger::Error(fmt::format("xAI response.failed: {}", errorMsg));
+        if (IsQuotaError(errorCode, errorMsg))
+        {
+            throw AiQuotaException(errorMsg);
+        }
+        throw AiServiceException(errorMsg);
     }
 
     return false;
@@ -359,6 +372,12 @@ AiResponse XAiService::GetTextResponse(int64_t chatId,
     PostJsonStream(currentModel.url, authHeader, buffer.GetString(), state);
 
     messageWorker_->FinalizeMessage(state.workerId);
+
+    if (state.responseText.empty())
+    {
+        Logger::Error(fmt::format("xAI streaming completed but responseText is empty (model: {})", currentModel.name));
+        throw AiServiceException("The model returned an empty response. Please try again.");
+    }
 
     return AiResponse{.text = state.responseText, .media = {}, .textStreamed = true};
 }

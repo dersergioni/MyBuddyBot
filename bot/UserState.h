@@ -19,6 +19,18 @@ namespace mbb
 
 using ChatKey = std::pair<int64_t, int32_t>; // {chatId, threadId}
 
+struct ActiveModuleKey
+{
+    int64_t chatId;
+    int32_t threadId;
+    int64_t userId;
+
+    bool operator==(const ActiveModuleKey& other) const noexcept
+    {
+        return chatId == other.chatId && threadId == other.threadId && userId == other.userId;
+    }
+};
+
 // =============================================================================
 // UserState - Thread-safe state management for chat sessions
 // =============================================================================
@@ -68,6 +80,11 @@ class UserState
     void SetLastProcessedMediaGroupId(const ChatKey& key, const std::string& mediaGroupId);
     [[nodiscard]] bool IsFromLastProcessedMediaGroup(const ChatKey& key, const std::string& mediaGroupId) const;
 
+    // Active module tracking
+    void SetActiveModule(const ActiveModuleKey& key, const std::string& modulePrefix);
+    [[nodiscard]] std::string GetActiveModule(const ActiveModuleKey& key) const;
+    void ClearActiveModule(const ActiveModuleKey& key);
+
   private:
     void Save() const;
     void WriteState(const std::filesystem::path& path) const;
@@ -82,6 +99,18 @@ class UserState
         }
     };
 
+    struct ActiveModuleKeyHash
+    {
+        std::size_t operator()(const ActiveModuleKey& key) const noexcept
+        {
+            std::size_t h1 = std::hash<int64_t>{}(key.chatId);
+            std::size_t h2 = std::hash<int32_t>{}(key.threadId);
+            std::size_t h3 = std::hash<int64_t>{}(key.userId);
+            std::size_t hash = h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
+            return hash ^ (h3 + 0x9e3779b9 + (hash << 6) + (hash >> 2));
+        }
+    };
+
     mutable std::mutex mutex_;
     std::filesystem::path statePath_;
     std::unordered_map<ChatKey, DialogMode, PairHash> dialogModes_;
@@ -90,6 +119,7 @@ class UserState
     std::unordered_map<ChatKey, ModelSelector, PairHash> modelSelectors_;
     std::unordered_map<ChatKey, std::vector<std::string>, PairHash> pendingImages_;
     std::unordered_map<ChatKey, std::string, PairHash> lastProcessedMediaGroupId_;
+    std::unordered_map<ActiveModuleKey, std::string, ActiveModuleKeyHash> activeModules_;
 };
 
 } // namespace mbb

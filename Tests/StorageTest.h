@@ -334,6 +334,58 @@ TEST_F(StorageTest, ClearedSystemMessageNotInjectedIntoHistory)
     EXPECT_EQ("Hello!", history[0].second);
 }
 
+TEST_F(StorageTest, SelectAllChatsEmptyOnNewDb)
+{
+    Storage storage(testDbPath_);
+    EXPECT_TRUE(storage.SelectAllChats().empty());
+}
+
+TEST_F(StorageTest, UpsertChatAndSelectAllChats)
+{
+    Storage storage(testDbPath_);
+
+    storage.UpsertChat(kTestChatId, 0);
+    storage.UpsertChat(kTestChatId, 5);
+
+    auto chats = storage.SelectAllChats();
+    ASSERT_EQ(2u, chats.size());
+
+    const auto has = [&chats](int64_t c, int32_t t) {
+        for (const auto& [chatId, threadId] : chats)
+        {
+            if (chatId == c && threadId == t)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+    EXPECT_TRUE(has(kTestChatId, 0));
+    EXPECT_TRUE(has(kTestChatId, 5));
+}
+
+TEST_F(StorageTest, UpsertChatIsIdempotent)
+{
+    Storage storage(testDbPath_);
+
+    storage.UpsertChat(kTestChatId, 0);
+    storage.UpsertChat(kTestChatId, 0);
+    storage.UpsertChat(kTestChatId, 0);
+
+    EXPECT_EQ(1u, storage.SelectAllChats().size());
+}
+
+TEST_F(StorageTest, UpsertChatRecordsDistinctChatsAndThreads)
+{
+    Storage storage(testDbPath_);
+
+    storage.UpsertChat(100, 0);
+    storage.UpsertChat(100, 7);
+    storage.UpsertChat(200, 0);
+
+    EXPECT_EQ(3u, storage.SelectAllChats().size());
+}
+
 } // namespace mbb::tests
 
 #endif // STORAGETEST_H

@@ -15,6 +15,7 @@ A C++ Telegram bot with multi-provider AI integration (OpenAI, xAI/Grok, Google 
 - Conversation history with context preservation
 - Switch between AI providers on the fly
 - Response viewer for AI responses with LaTeX formulas, syntax-highlighted code, and tables
+- Optional Wishlist module with private/public lists, family sharing, and wish reservations
 
 ## Prerequisites
 
@@ -27,6 +28,7 @@ A C++ Telegram bot with multi-provider AI integration (OpenAI, xAI/Grok, Google 
 - [RapidJSON](https://rapidjson.org/)
 - [SQLite3](https://www.sqlite.org/)
 - [Google Test](https://github.com/google/googletest)
+- [Rust](https://www.rust-lang.org/tools/install) toolchain (rustc + cargo, required for the Wishlist Rust workspace)
 - [tgbot-cpp](https://github.com/reo7sp/tgbot-cpp) (must be built separately)
 - [ffmpeg](https://ffmpeg.org/) (required for voice message conversion)
 
@@ -83,6 +85,9 @@ cd MyBuddyBot
 Use a package manager to install the required libraries:
 
 ```bash
+# Rust toolchain (all platforms)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
 # macOS (Homebrew)
 brew install cmake ninja boost openssl curl fmt rapidjson sqlite3 googletest ffmpeg
 
@@ -117,6 +122,7 @@ cmake --build release
 ```
 
 **Note:** `TGBOT_LIBRARY_LOCATION` is required and must point to the tgbot-cpp installation prefix.
+**Note:** CMake fetches Corrosion and builds the Wishlist Rust crates automatically as part of the normal app build. No separate `cargo build` step is required for regular local builds.
 
 ### 5. Configure Environment Variables
 
@@ -128,6 +134,7 @@ See `example.env` for a ready-to-fill template.
 | `OAI_API_TOKEN` | Optional* | OpenAI API key |
 | `XAI_API_TOKEN` | Optional* | xAI API key |
 | `GOOGLE_API_TOKEN` | Optional* | Google Gemini API key |
+| `MYBUDDYBOT_AI_CONFIG_PATH` | Yes | Path to the JSON file defining each provider's AI models (see [AI Provider Config File](#ai-provider-config-file)) |
 | `MYBUDDYBOT_DB_PATH` | Yes | Path to SQLite database file |
 | `MYBUDDYBOT_NAME` | No | Bot display name used in `/start`, `/health`, and runtime logs (default: `MyBuddyBot`) |
 | `MYBUDDYBOT_DEBUG_LEVEL_MODE` | No | Set to enable debug logging |
@@ -139,11 +146,13 @@ See `example.env` for a ready-to-fill template.
 | `MYBUDDYBOT_BLOCKLIST_IDS` | No | CSV list of blocked Telegram user IDs |
 | `MYBUDDYBOT_BLOCKLIST_USERNAMES` | No | CSV list of blocked Telegram usernames |
 | `MYBUDDYBOT_ADMIN_IDS` | No | CSV list of admin Telegram user IDs |
+| `MYBUDDYBOT_MODULE_WISHLIST` | No | Set to `0` to disable the Wishlist module (enabled by default) |
+| `MYBUDDYBOT_MODULE_WISHLIST_DB` | No | Path to the Wishlist SQLite database (default: `wishlist.db` next to main DB) |
 | `MYBUDDYBOT_VIEWER_URL` | No | Public URL of the response viewer, **must end with `/`** (e.g. `https://bot.example.com/viewer/`) |
 | `MYBUDDYBOT_VIEWER_DIR` | No | Local directory where the viewer files are served from (e.g. `/var/www/MyBuddyBot/viewer`) |
 | `MYBUDDYBOT_RUN_INTEGRATION_TESTS` | No | Set to `1` to enable integration tests |
 
-**\*** At least one AI provider token must be set. Providers without tokens are disabled, and `/switch_provider` cycles only through enabled providers.
+**\*** At least one provider must be usable — i.e. have an API key (here or in the config file) **and** a complete `primary` model in the AI config file. Providers without both are disabled, and `/switch_provider` cycles only through enabled providers.
 Access control precedence: `admin` bypasses all lists, then blocklist denies, then allowlist allows (if allowlist is configured).
 
 Access list format:
@@ -159,6 +168,30 @@ Examples with multiple users:
 - `MYBUDDYBOT_BLOCKLIST_USERNAMES="spam_bot,@annoying_user"`
 - `MYBUDDYBOT_ADMIN_IDS="123456789,555555555"`
 
+### AI Provider Config File
+
+AI model definitions live entirely in a JSON file — point `MYBUDDYBOT_AI_CONFIG_PATH` at it. This file is **required**: a provider stays disabled until its models are defined here. Copy [`ai-config.example.json`](ai-config.example.json) (which ships with working defaults for all three providers) as a starting point:
+
+```json
+{
+  "providers": {
+    "openai": {
+      "apiKey": "sk-...",
+      "models": {
+        "primary": { "name": "gpt-5.4-mini", "url": "https://api.openai.com/v1/responses", "contextSize": 400000 }
+      }
+    }
+  }
+}
+```
+
+- **Providers:** `openai`, `xai`, `google`. **Model slots:** `primary`, `secondary`, `image`, `audio`. Provider and slot names are case-insensitive.
+- **Model fields** (`name`, `url`, `contextSize`) come **only** from this file — there are no built-in defaults. A slot is usable only when all three fields are present; an incomplete slot is skipped, disabling that one capability.
+- **A provider is enabled** when it has an API key **and** a complete `primary` model. `secondary`/`image`/`audio` are optional — define the ones you want (xAI, for example, has no `audio`).
+- **API keys** resolve in the order: environment variable (`OAI_API_TOKEN`, etc.) → file `apiKey` → none. The environment always wins, so you can keep secrets out of the file.
+- If the file is missing or malformed, **startup fails fast**.
+- Because it can contain API keys, keep your real file out of version control (`ai-config.json` is gitignored).
+
 ### 6. Run the Bot
 
 ```bash
@@ -166,6 +199,7 @@ export TG_API_TOKEN="your-telegram-token"
 export OAI_API_TOKEN="your-openai-key"
 export XAI_API_TOKEN="your-xai-key"
 export GOOGLE_API_TOKEN="your-google-key"
+export MYBUDDYBOT_AI_CONFIG_PATH="./ai-config.json"
 export MYBUDDYBOT_DB_PATH="./mybuddybot.db"
 export MYBUDDYBOT_NAME="MyBuddyBot"
 export MYBUDDYBOT_DEFAULT_PROVIDER="openai"
@@ -182,7 +216,7 @@ export MYBUDDYBOT_RUN_INTEGRATION_TESTS=""
 ./release/MyBuddyBot
 ```
 
-You can omit provider tokens you don't plan to use. At least one AI provider token must be set.
+`MYBUDDYBOT_AI_CONFIG_PATH` must point at a JSON file defining your models (copy `ai-config.example.json` and fill in your keys). You can omit providers you don't plan to use, but at least one needs a key **and** a complete `primary` model.
 
 ## Usage
 
@@ -313,7 +347,7 @@ Now send a message that triggers a LaTeX response from the AI — the bot will s
 
 ```bash
 # Run all tests
-cd release && ctest --output-on-failure
+ctest --test-dir release --output-on-failure
 
 # Or run directly
 ./release/MyBuddyBot --test

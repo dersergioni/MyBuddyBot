@@ -4,7 +4,7 @@
 #include "infra/Env.h"
 #include "infra/StringUtils.h"
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include <fmt/std.h>
 
 #include <algorithm>
@@ -41,14 +41,37 @@ std::unordered_set<std::string> Config::blocklistUsernames_;
 std::unordered_set<int64_t> Config::adminIds_;
 std::string Config::viewerUrl_;
 std::filesystem::path Config::viewerDir_;
+AiConfig Config::aiConfig_;
 
 namespace
 {
+const char* ProviderConfigName(AiProvider provider)
+{
+    switch (provider)
+    {
+    case AiProvider::OpenAI:
+        return "openai";
+    case AiProvider::XAI:
+        return "xai";
+    case AiProvider::Google:
+        return "google";
+    }
+    return "";
+}
+
+std::string ResolveProviderKey(const AiConfig& aiConfig, const char* envVar, const char* provider)
+{
+    std::string key = StringUtils::TrimCopy(Env::GetOptional(envVar));
+    if (key.empty())
+    {
+        key = StringUtils::TrimCopy(aiConfig.GetApiKey(provider).value_or(""));
+    }
+    return key;
+}
+
 AiProvider ParseProvider(const std::string& value)
 {
-    std::string normalized = value;
-    std::transform(normalized.begin(), normalized.end(), normalized.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    const std::string normalized = StringUtils::ToLower(value);
 
     if (normalized == "openai")
     {
@@ -214,9 +237,16 @@ void Config::Init()
 
     botToken_ = Env::GetRequired("TG_API_TOKEN");
 
-    openAiToken_ = Env::GetOptional("OAI_API_TOKEN");
-    xAiToken_ = Env::GetOptional("XAI_API_TOKEN");
-    googleToken_ = Env::GetOptional("GOOGLE_API_TOKEN");
+    aiConfig_ = AiConfig{};
+    const auto aiConfigPath = StringUtils::TrimCopy(Env::GetOptional("MYBUDDYBOT_AI_CONFIG_PATH"));
+    if (!aiConfigPath.empty())
+    {
+        aiConfig_.LoadFromFile(ToAbsolutePath(aiConfigPath));
+    }
+
+    openAiToken_ = ResolveProviderKey(aiConfig_, "OAI_API_TOKEN", "openai");
+    xAiToken_ = ResolveProviderKey(aiConfig_, "XAI_API_TOKEN", "xai");
+    googleToken_ = ResolveProviderKey(aiConfig_, "GOOGLE_API_TOKEN", "google");
 
     allowlistIds_ = ParseIdSet(Env::GetOptional("MYBUDDYBOT_ALLOWLIST_IDS"), "MYBUDDYBOT_ALLOWLIST_IDS");
     allowlistUsernames_ = ParseUsernameSet(Env::GetOptional("MYBUDDYBOT_ALLOWLIST_USERNAMES"));
@@ -252,23 +282,24 @@ void Config::Init()
     }
 
     enabledProviders_.clear();
-    if (!openAiToken_.empty())
+    if (!openAiToken_.empty() && aiConfig_.GetModelSpec("openai", "primary").IsComplete())
     {
         enabledProviders_.push_back(AiProvider::OpenAI);
     }
-    if (!xAiToken_.empty())
+    if (!xAiToken_.empty() && aiConfig_.GetModelSpec("xai", "primary").IsComplete())
     {
         enabledProviders_.push_back(AiProvider::XAI);
     }
-    if (!googleToken_.empty())
+    if (!googleToken_.empty() && aiConfig_.GetModelSpec("google", "primary").IsComplete())
     {
         enabledProviders_.push_back(AiProvider::Google);
     }
 
-    if (enabledProviders_.empty())
+    if (enabledProviders_.empty() && !isTestMode_)
     {
-        throw std::runtime_error(
-            "No AI provider tokens configured. Set at least one of OAI_API_TOKEN, XAI_API_TOKEN, GOOGLE_API_TOKEN.");
+        throw std::runtime_error("No usable AI provider configured. Each provider needs an API key (env or config "
+                                 "file) and a complete \"primary\" model in the AI config file "
+                                 "(set MYBUDDYBOT_AI_CONFIG_PATH).");
     }
 
     // Default provider (optional)
@@ -287,7 +318,7 @@ void Config::Init()
         }
     }
 
-    if (!IsProviderEnabled(defaultProvider_))
+    if (!IsProviderEnabled(defaultProvider_) && !enabledProviders_.empty())
     {
         defaultProvider_ = enabledProviders_.front();
         Logger::Info(fmt::format("Default provider is not enabled. Falling back to {}",
@@ -300,6 +331,11 @@ void Config::Init()
 bool Config::IsProviderEnabled(AiProvider provider)
 {
     return std::find(enabledProviders_.begin(), enabledProviders_.end(), provider) != enabledProviders_.end();
+}
+
+AiModelSpec Config::GetModelSpec(AiProvider provider, const std::string& slot)
+{
+    return aiConfig_.GetModelSpec(ProviderConfigName(provider), slot);
 }
 
 bool Config::IsAdminUser(int64_t userId)

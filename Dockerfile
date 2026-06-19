@@ -22,11 +22,17 @@ RUN git clone --depth 1 https://github.com/reo7sp/tgbot-cpp.git /tmp/tgbot-cpp \
 FROM ubuntu:24.04 AS app-build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ninja-build g++ python3-pip \
+        ninja-build g++ python3-pip curl ca-certificates \
         libssl-dev libcurl4-openssl-dev libboost-all-dev \
         libfmt-dev rapidjson-dev libsqlite3-dev \
     && pip3 install --break-system-packages cmake \
     && rm -rf /var/lib/apt/lists/*
+
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal \
+    && rustc --version
 
 COPY --from=tgbot-build /opt/tgbot /opt/tgbot
 

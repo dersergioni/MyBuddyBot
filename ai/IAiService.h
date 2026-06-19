@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/AiConfig.h"
+
 #include <rapidjson/document.h>
 
 #include <cstddef>
@@ -27,6 +29,17 @@ class AiServiceException : public std::runtime_error
     }
 };
 
+// Thrown when a provider rejects the request because its quota/credits/billing
+// are exhausted (e.g. OpenAI "insufficient_quota"). Distinct from transient API
+// errors so callers can show a billing message and alert the bot owner.
+class AiQuotaException : public AiServiceException
+{
+  public:
+    explicit AiQuotaException(const std::string& message) : AiServiceException(message)
+    {
+    }
+};
+
 // =============================================================================
 // Enums and Types
 // =============================================================================
@@ -46,6 +59,15 @@ struct AiModel
     std::string apiKey;
     std::string url;
 };
+
+[[nodiscard]] inline AiModel BuildModel(const AiModelSpec& spec, const std::string& apiKey)
+{
+    if (!spec.IsComplete())
+    {
+        return {};
+    }
+    return AiModel{.name = *spec.name, .contextSize = *spec.contextSize, .apiKey = apiKey, .url = *spec.url};
+}
 
 // =============================================================================
 // Unified AI Response
@@ -190,6 +212,12 @@ class IAiService
         std::string remainingChunk;
         std::vector<char> binaryData;
         const IAiService* service = nullptr; // For virtual dispatch from static callbacks
+
+        // Set by the streaming callback when the provider reports an error mid-stream.
+        // Exceptions cannot cross the libcurl C callback boundary, so the error is
+        // recorded here and rethrown by PostJsonStream in a safe C++ context.
+        std::optional<std::string> streamError = std::nullopt;
+        bool streamErrorIsQuota = false;
     };
 
     // -------------------------------------------------------------------------
@@ -224,6 +252,10 @@ class IAiService
     // JSON response parsing with error checking.
     // Parses JSON, throws AiServiceException on parse error or if "error" member present.
     [[nodiscard]] static rapidjson::Document ParseJsonResponse(const std::string& responseData);
+
+    // Returns true if a provider error (by code/type and/or message) indicates
+    // exhausted quota/credits/billing rather than a transient failure.
+    [[nodiscard]] static bool IsQuotaError(const std::string& codeOrType, const std::string& message);
 
     // Helper for token counting (shared by implementations)
     [[nodiscard]] virtual bool ShouldStopAddingHistory(size_t totalTokenCount,

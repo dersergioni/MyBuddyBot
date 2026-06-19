@@ -2,6 +2,7 @@
 #define SMOKETESTSUITE_H
 
 #include "AccessControlConfigTest.h"
+#include "AiConfigTest.h"
 #include "AiServiceSseTest.h"
 #include "AppConfigTest.h"
 #include "AudioConverterTest.h"

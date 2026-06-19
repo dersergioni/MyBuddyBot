@@ -4,7 +4,7 @@
 #include "core/Logger.h"
 #include "telegram/IMessageWorker.h"
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include <fmt/std.h>
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
@@ -33,27 +33,10 @@ GoogleService::GoogleService(std::shared_ptr<IMessageWorker> messageWorker) : IA
 {
     const auto& apiKey = Config::GetGoogleToken();
 
-    // Native Gemini API: URL contains model name, streaming uses ?alt=sse
-    primaryModel_ = {.name = "gemini-3-flash-preview",
-                     .contextSize = 1024 * 1024,
-                     .apiKey = apiKey,
-                     .url = "https://generativelanguage.googleapis.com/v1beta/models/"};
-
-    secondaryModel_ = {.name = "gemini-3-pro-preview",
-                       .contextSize = 1024 * 1024,
-                       .apiKey = apiKey,
-                       .url = "https://generativelanguage.googleapis.com/v1beta/models/"};
-
-    imageModel_ = {.name = "gemini-3-pro-image-preview",
-                   .contextSize = 0,
-                   .apiKey = apiKey,
-                   .url = "https://generativelanguage.googleapis.com/v1beta/models/"};
-
-    // Native Gemini audio support (STT only via generateContent API)
-    audioModel_ = {.name = "gemini-3-flash-preview",
-                   .contextSize = 1024 * 1024,
-                   .apiKey = apiKey,
-                   .url = "https://generativelanguage.googleapis.com/v1beta/models/"};
+    primaryModel_ = BuildModel(Config::GetModelSpec(AiProvider::Google, "primary"), apiKey);
+    secondaryModel_ = BuildModel(Config::GetModelSpec(AiProvider::Google, "secondary"), apiKey);
+    imageModel_ = BuildModel(Config::GetModelSpec(AiProvider::Google, "image"), apiKey);
+    audioModel_ = BuildModel(Config::GetModelSpec(AiProvider::Google, "audio"), apiKey);
 }
 
 // =============================================================================
@@ -327,6 +310,13 @@ AiResponse GoogleService::GetTextResponse(int64_t chatId,
     PostJsonStream(url, authHeader, buffer.GetString(), state);
 
     messageWorker_->FinalizeMessage(state.workerId);
+
+    if (state.responseText.empty())
+    {
+        Logger::Error(
+            fmt::format("Google streaming completed but responseText is empty (model: {})", currentModel.name));
+        throw AiServiceException("The model returned an empty response. Please try again.");
+    }
 
     return AiResponse{.text = state.responseText, .media = {}, .textStreamed = true};
 }

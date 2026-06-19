@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.30)
 
-project(MyBuddyBot VERSION 1.2.0 LANGUAGES C CXX)
+project(MyBuddyBot VERSION 2.0.0 LANGUAGES C CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -49,9 +49,46 @@ find_package(SQLite3 REQUIRED)
 find_package(fmt REQUIRED)
 find_package(RapidJSON REQUIRED)
 
+# The SQLite3 imported-target name changed across CMake versions: older
+# FindSQLite3 defines only SQLite::SQLite3, while newer CMake defines
+# SQLite3::SQLite3 and deprecates SQLite::SQLite3. Prefer the modern name when
+# available, falling back to the legacy one so older toolchains still build.
+if (TARGET SQLite3::SQLite3)
+    set(MBB_SQLITE3_TARGET SQLite3::SQLite3)
+else()
+    set(MBB_SQLITE3_TARGET SQLite::SQLite3)
+endif()
+
 if (BUILD_TESTS)
     enable_testing()
     find_package(GTest CONFIG REQUIRED)
+endif()
+
+# =============================================================================
+# Rust modules via Corrosion
+# =============================================================================
+include(FetchContent)
+FetchContent_Declare(
+    Corrosion
+    GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
+    GIT_TAG        v0.5.1
+)
+FetchContent_MakeAvailable(Corrosion)
+corrosion_import_crate(MANIFEST_PATH modules/wishlist/telegram/Cargo.toml)
+corrosion_add_cxxbridge(wishlist_cxx CRATE wishlist_telegram FILES lib.rs)
+target_include_directories(wishlist_cxx PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# On Windows the C++ side links vcpkg's SQLite3, while rusqlite/libsqlite3-sys
+# would otherwise bundle a second copy and collide at link time (LNK2005).
+# Point libsqlite3-sys at the same SQLite3 that find_package(SQLite3) located so
+# the whole binary shares a single SQLite3. Paired with the Windows-only
+# (non-bundled) rusqlite dependency in modules/wishlist/sqlite/Cargo.toml.
+if (WIN32)
+    get_filename_component(_sqlite3_lib_dir "${SQLite3_LIBRARY}" DIRECTORY)
+    corrosion_set_env_vars(wishlist_telegram
+        "SQLITE3_LIB_DIR=${_sqlite3_lib_dir}"
+        "SQLITE3_INCLUDE_DIR=${SQLite3_INCLUDE_DIR}"
+    )
 endif()
 
 # TgBot library (must be pre-built)
@@ -84,6 +121,7 @@ set(PROJECT_SOURCES
     main.cpp
 
     # core
+    core/AiConfig.cpp
     core/Config.cpp
     core/Logger.cpp
     core/Storage.cpp
@@ -115,6 +153,12 @@ set(PROJECT_SOURCES
     bot/UserState.cpp
     bot/CommandHandlers.cpp
     bot/BotApp.cpp
+
+    # modules
+    modules/services/TelegramOps.cpp
+    modules/framework/ModuleHost.cpp
+    modules/services/ModuleOps.cpp
+    modules/wishlist/bridge/WishlistBridge.cpp
 
 )
 
@@ -178,9 +222,10 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     OpenSSL::SSL
     OpenSSL::Crypto
     CURL::libcurl
-    SQLite::SQLite3
+    ${MBB_SQLITE3_TARGET}
     fmt::fmt
     Boost::headers
+    wishlist_cxx
 )
 
 # Platform-specific libraries

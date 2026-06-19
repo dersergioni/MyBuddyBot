@@ -1,5 +1,9 @@
 #include "bot/BotApp.h"
 
+#include "modules/framework/ModuleHost.h"
+#include "modules/services/TelegramOps.h"
+#include "modules/wishlist/bridge/WishlistBridge.h"
+
 #include "ai/GoogleService.h"
 #include "ai/OpenAiService.h"
 #include "ai/XAiService.h"
@@ -16,7 +20,7 @@
 #include "telegram/MessageWorker.h"
 #include "telegram/TelegramApi.h"
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include <fmt/std.h>
 #include <tgbot/tgbot.h>
 
@@ -224,9 +228,29 @@ void BotApp::InitializeComponents()
         googleService_ = std::make_shared<GoogleService>(messageWorker_);
     }
 
+    // Module host
+    moduleHost_ = std::make_shared<ModuleHost>(*userState_);
+
+    // Register Rust modules
+    if (Env::GetOptional("MYBUDDYBOT_MODULE_WISHLIST") != "0")
+    {
+        auto telegramOps = std::make_shared<TelegramOps>(telegramApi_);
+        auto wishlistDbPath = Env::GetOptional("MYBUDDYBOT_MODULE_WISHLIST_DB");
+        if (wishlistDbPath.empty())
+        {
+            wishlistDbPath = (Config::GetDbPath().parent_path() / "wishlist.db").string();
+        }
+        moduleHost_->RegisterModule(wishlist::CreateWishlistModule(telegramOps, storage_, wishlistDbPath));
+        Logger::Info("Module Wishlist: enabled");
+    }
+    else
+    {
+        Logger::Info("Module Wishlist: disabled (MYBUDDYBOT_MODULE_WISHLIST=0)");
+    }
+
     // Command handlers
     handlers_ = std::make_shared<CommandHandlers>(telegramApi_, mediaDownloader_, storage_, userState_, taskQueue_,
-                                                  openAiService_, xAiService_, googleService_);
+                                                  openAiService_, xAiService_, googleService_, moduleHost_);
 
     // Start message worker for streaming responses
     messageWorker_->Start(telegramApi_);
@@ -263,9 +287,16 @@ void BotApp::RegisterHandlers()
     bot_->getEvents().onCommand("health",
                                 [this](const TgBot::Message::Ptr& message) { handlers_->HandleHealth(message); });
 
+    bot_->getEvents().onCommand("broadcast",
+                                [this](const TgBot::Message::Ptr& message) { handlers_->HandleBroadcast(message); });
+
     // Non-command messages
     bot_->getEvents().onNonCommandMessage(
         [this](const TgBot::Message::Ptr& message) { handlers_->HandleNonCommandMessage(message); });
+
+    // Callback queries (inline keyboard only — reply keyboard sends regular text messages)
+    bot_->getEvents().onCallbackQuery(
+        [this](const TgBot::CallbackQuery::Ptr& query) { handlers_->HandleCallbackQuery(query); });
 }
 
 void BotApp::SetBotCommands()

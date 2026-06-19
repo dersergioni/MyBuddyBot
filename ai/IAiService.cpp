@@ -4,7 +4,7 @@
 #include "telegram/IMessageWorker.h"
 
 #include <curl/curl.h>
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include <rapidjson/document.h>
 
 #include <chrono>
@@ -50,6 +50,12 @@ size_t IAiService::TextStreamCallback(void* contents, size_t size, size_t nmemb,
     state->incomingChunk = std::string(static_cast<char*>(contents), size * nmemb);
     // Accumulate across callbacks because SSE events may arrive split.
     state->remainingChunk += state->incomingChunk;
+
+    // Once a stream error has been recorded, drain remaining data without processing.
+    if (state->streamError.has_value())
+    {
+        return size * nmemb;
+    }
 
     while (true)
     {
@@ -133,12 +139,27 @@ size_t IAiService::TextStreamCallback(void* contents, size_t size, size_t nmemb,
             if (json.HasMember("error"))
             {
                 std::string errorMsg = "API stream error";
-                if (json["error"].IsObject() && json["error"].HasMember("message") &&
-                    json["error"]["message"].IsString())
+                std::string errorCode;
+                if (json["error"].IsObject())
                 {
-                    errorMsg = json["error"]["message"].GetString();
+                    if (json["error"].HasMember("message") && json["error"]["message"].IsString())
+                    {
+                        errorMsg = json["error"]["message"].GetString();
+                    }
+                    if (json["error"].HasMember("code") && json["error"]["code"].IsString())
+                    {
+                        errorCode = json["error"]["code"].GetString();
+                    }
+                    else if (json["error"].HasMember("type") && json["error"]["type"].IsString())
+                    {
+                        errorCode = json["error"]["type"].GetString();
+                    }
                 }
                 Logger::Error(fmt::format("Error in SSE stream: {}", errorMsg));
+                if (IsQuotaError(errorCode, errorMsg))
+                {
+                    throw AiQuotaException(errorMsg);
+                }
                 throw AiServiceException(errorMsg);
             }
 
@@ -148,9 +169,22 @@ size_t IAiService::TextStreamCallback(void* contents, size_t size, size_t nmemb,
                 (void)state->service->ExtractStreamContent(dataPayload, *state);
             }
         }
+        catch (const AiServiceException& e)
+        {
+            // AI-level errors (quota, API failures) must surface to the caller. We
+            // cannot throw across the libcurl C callback boundary, so record the error
+            // and let PostJsonStream rethrow it once the transfer ends.
+            if (!state->streamError.has_value())
+            {
+                state->streamError = e.what();
+                state->streamErrorIsQuota = (dynamic_cast<const AiQuotaException*>(&e) != nullptr);
+            }
+            Logger::Debug(fmt::format("Stream error recorded in {}: {}", __func__, e.what()));
+            break;
+        }
         catch (const std::exception& e)
         {
-            // Keep streaming even if a single chunk fails.
+            // Non-AI errors (e.g. a single malformed chunk) — keep streaming.
             Logger::Debug(fmt::format("Exception in {}: {} for {}", __func__, e.what(), dataPayload));
         }
     }
@@ -344,24 +378,52 @@ void IAiService::PostJsonStream(const std::string& url,
 
         if (httpCode >= 400)
         {
-            // Non-retryable HTTP error — extract message from unparsed response body
+            // Non-retryable HTTP error — extract message/code from unparsed response body
             std::string errorDetail;
+            std::string errorCode;
             if (!state.remainingChunk.empty())
             {
                 rapidjson::Document errorDoc;
                 errorDoc.Parse(state.remainingChunk.c_str());
-                if (!errorDoc.HasParseError() && errorDoc.HasMember("error") && errorDoc["error"].IsObject() &&
-                    errorDoc["error"].HasMember("message") && errorDoc["error"]["message"].IsString())
+                if (!errorDoc.HasParseError() && errorDoc.HasMember("error") && errorDoc["error"].IsObject())
                 {
-                    errorDetail = errorDoc["error"]["message"].GetString();
+                    const auto& err = errorDoc["error"];
+                    if (err.HasMember("message") && err["message"].IsString())
+                    {
+                        errorDetail = err["message"].GetString();
+                    }
+                    if (err.HasMember("code") && err["code"].IsString())
+                    {
+                        errorCode = err["code"].GetString();
+                    }
+                    else if (err.HasMember("status") && err["status"].IsString())
+                    {
+                        // Gemini reports quota as HTTP 429 with status "RESOURCE_EXHAUSTED".
+                        errorCode = err["status"].GetString();
+                    }
                 }
-                else
+                if (errorDetail.empty())
                 {
                     errorDetail = state.remainingChunk.substr(0, 500);
                 }
             }
-            throw AiServiceException(
-                fmt::format("API error (HTTP {}): {}", httpCode, errorDetail.empty() ? "unknown error" : errorDetail));
+            const std::string fullError =
+                fmt::format("API error (HTTP {}): {}", httpCode, errorDetail.empty() ? "unknown error" : errorDetail);
+            if (IsQuotaError(errorCode, errorDetail))
+            {
+                throw AiQuotaException(fullError);
+            }
+            throw AiServiceException(fullError);
+        }
+
+        if (state.streamError.has_value())
+        {
+            // The stream reported an error mid-transfer (recorded by the callback).
+            if (state.streamErrorIsQuota)
+            {
+                throw AiQuotaException(*state.streamError);
+            }
+            throw AiServiceException(*state.streamError);
         }
 
         Logger::Debug(
@@ -404,14 +466,73 @@ rapidjson::Document IAiService::ParseJsonResponse(const std::string& responseDat
     {
         // Normalize provider error objects into a simple exception message.
         std::string errorMsg = "API returned error";
-        if (doc["error"].IsObject() && doc["error"].HasMember("message"))
+        std::string errorCode;
+        if (doc["error"].IsObject())
         {
-            errorMsg = doc["error"]["message"].GetString();
+            if (doc["error"].HasMember("message") && doc["error"]["message"].IsString())
+            {
+                errorMsg = doc["error"]["message"].GetString();
+            }
+            if (doc["error"].HasMember("code") && doc["error"]["code"].IsString())
+            {
+                errorCode = doc["error"]["code"].GetString();
+            }
+            else if (doc["error"].HasMember("type") && doc["error"]["type"].IsString())
+            {
+                errorCode = doc["error"]["type"].GetString();
+            }
+            else if (doc["error"].HasMember("status") && doc["error"]["status"].IsString())
+            {
+                errorCode = doc["error"]["status"].GetString();
+            }
+        }
+        if (IsQuotaError(errorCode, errorMsg))
+        {
+            throw AiQuotaException(errorMsg);
         }
         throw AiServiceException(errorMsg);
     }
 
     return doc;
+}
+
+// =============================================================================
+// IsQuotaError
+// =============================================================================
+// Heuristic match for "billing/quota/credits exhausted" across providers:
+//   - OpenAI:  error.code/type == "insufficient_quota"
+//   - xAI:     OpenAI-compatible codes / billing messages
+//   - Gemini:  HTTP 429 with error.status == "RESOURCE_EXHAUSTED"
+// Kept conservative so transient failures (e.g. plain rate limits) are NOT matched.
+
+bool IAiService::IsQuotaError(const std::string& codeOrType, const std::string& message)
+{
+    auto toLower = [](std::string s) {
+        for (char& c : s)
+        {
+            if (c >= 'A' && c <= 'Z')
+            {
+                c = static_cast<char>(c - 'A' + 'a');
+            }
+        }
+        return s;
+    };
+    auto has = [](const std::string& haystack, const char* needle) {
+        return haystack.find(needle) != std::string::npos;
+    };
+
+    const std::string code = toLower(codeOrType);
+    const std::string msg = toLower(message);
+
+    if (has(code, "insufficient_quota") || has(code, "quota_exceeded") || has(code, "resource_exhausted") ||
+        has(code, "billing") || has(code, "insufficient_credit") || has(code, "out_of_credit"))
+    {
+        return true;
+    }
+
+    return has(msg, "insufficient_quota") || has(msg, "exceeded your current quota") ||
+           has(msg, "check your plan and billing") || has(msg, "out of credit") || has(msg, "insufficient credit") ||
+           has(msg, "billing hard limit");
 }
 
 // =============================================================================

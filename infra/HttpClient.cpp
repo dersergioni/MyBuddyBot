@@ -1,7 +1,7 @@
 #include "HttpClient.h"
 
 #include <curl/curl.h>
-#include <fmt/core.h>
+#include <fmt/format.h>
 
 #include <stdexcept>
 

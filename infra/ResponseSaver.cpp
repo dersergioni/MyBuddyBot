@@ -4,7 +4,7 @@
 #include "core/Logger.h"
 #include "infra/FileUtils.h"
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>

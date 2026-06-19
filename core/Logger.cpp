@@ -3,7 +3,7 @@
 #include "core/Config.h"
 
 #include <fmt/chrono.h>
-#include <fmt/core.h>
+#include <fmt/format.h>
 
 #include <iostream>
 #include <mutex>

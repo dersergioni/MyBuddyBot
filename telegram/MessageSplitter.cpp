@@ -2,7 +2,7 @@
 
 #include "infra/TelegramHtmlFormatter.h"
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 
 #include <algorithm>
 #include <cctype>
@@ -72,10 +72,10 @@ SplitResult FindBestSplit(const std::string& text,
                           bool showTotalMessages,
                           const std::vector<size_t>& likelySplitPoints);
 FormattedMessage BuildFormattedMessage(const std::string& text,
-                                      const TgMessageSubBlock& subBlock,
-                                      size_t end,
-                                      size_t totalMessages,
-                                      bool showTotalMessages);
+                                       const TgMessageSubBlock& subBlock,
+                                       size_t end,
+                                       size_t totalMessages,
+                                       bool showTotalMessages);
 CodeBlockContext FindCodeBlockContext(const std::string& text, size_t pos);
 
 } // namespace
@@ -123,9 +123,8 @@ void MessageSplitter::SplitForStreaming(MessageBlock& block)
     {
         lastSubBlock = &block.subBlocks.back();
         lastSubBlock->range.second = block.rawFullText.size();
-        auto formattedMessage =
-            BuildFormattedMessage(block.rawFullText, *lastSubBlock, lastSubBlock->range.second, block.subBlocks.size(),
-                                  block.isReadyToFinalize);
+        auto formattedMessage = BuildFormattedMessage(block.rawFullText, *lastSubBlock, lastSubBlock->range.second,
+                                                      block.subBlocks.size(), block.isReadyToFinalize);
 
         if (formattedMessage.sizeForLimit <= kMaxMessageLength)
         {
@@ -193,9 +192,8 @@ namespace
 SplitAdvance ApplySplit(MessageBlock& block, std::vector<size_t>& likelySplitPoints)
 {
     auto& lastSubBlock = block.subBlocks.back();
-    auto splitResult =
-        FindBestSplit(block.rawFullText, lastSubBlock, block.subBlocks.size() + 1, block.isReadyToFinalize,
-                      likelySplitPoints);
+    auto splitResult = FindBestSplit(block.rawFullText, lastSubBlock, block.subBlocks.size() + 1,
+                                     block.isReadyToFinalize, likelySplitPoints);
 
     lastSubBlock.range.second = splitResult.splitPoint;
     lastSubBlock.markdownSuffix = splitResult.codeBlockContext.inside ? BuildCodeFenceSuffix() : std::string{};
@@ -235,7 +233,8 @@ SplitResult FindBestSplit(const std::string& text,
 
     while (candidatePoint != likelySplitPoints.rend() && *candidatePoint > subBlock.range.first)
     {
-        auto formattedMessage = BuildFormattedMessage(text, subBlock, *candidatePoint, totalMessages, showTotalMessages);
+        auto formattedMessage =
+            BuildFormattedMessage(text, subBlock, *candidatePoint, totalMessages, showTotalMessages);
 
         if (formattedMessage.sizeForLimit <= MessageSplitter::kMaxMessageLength)
         {
@@ -281,16 +280,14 @@ SplitResult FindBestSplit(const std::string& text,
 }
 
 FormattedMessage BuildFormattedMessage(const std::string& text,
-                                      const TgMessageSubBlock& subBlock,
-                                      size_t end,
-                                      size_t totalMessages,
-                                      bool showTotalMessages)
+                                       const TgMessageSubBlock& subBlock,
+                                       size_t end,
+                                       size_t totalMessages,
+                                       bool showTotalMessages)
 {
     std::string markdown;
-    markdown.reserve(
-        (subBlock.markdownPrefix.size()) +
-        (end - subBlock.range.first) +
-        (subBlock.markdownSuffix.size()));
+    markdown.reserve((subBlock.markdownPrefix.size()) + (end - subBlock.range.first) +
+                     (subBlock.markdownSuffix.size()));
     markdown += subBlock.markdownPrefix;
     markdown.append(text, subBlock.range.first, end - subBlock.range.first);
     markdown += subBlock.markdownSuffix;
@@ -304,7 +301,8 @@ FormattedMessage BuildFormattedMessage(const std::string& text,
     {
         static const size_t kReservedHeaderLength =
             BuildAnswerHeader(kReservedHeaderNumber, kReservedHeaderNumber, true).size();
-        const size_t reservedHeaderGrowth = header.size() >= kReservedHeaderLength ? 0 : kReservedHeaderLength - header.size();
+        const size_t reservedHeaderGrowth =
+            header.size() >= kReservedHeaderLength ? 0 : kReservedHeaderLength - header.size();
         sizeForLimit += reservedHeaderGrowth;
     }
 

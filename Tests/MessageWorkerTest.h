@@ -61,8 +61,8 @@ TEST(MessageWorkerTest, HardSplitLongCodeBlockKeepsHtmlAndFitsLimit)
     std::string input = "```cpp\n";
     for (int i = 0; i < 220; ++i)
     {
-        input += std::string("std::cout << \"very long line with escaped chars <>& and index ")
-                 + std::to_string(i) + "\" << std::endl;\n";
+        input += std::string("std::cout << \"very long line with escaped chars <>& and index ") + std::to_string(i) +
+                 "\" << std::endl;\n";
     }
     input += "```";
 
@@ -81,8 +81,8 @@ TEST(MessageWorkerTest, HardSplitDoesNotMutateRawText)
     std::string input = "```python\n";
     for (int i = 0; i < 260; ++i)
     {
-        input += std::string("print('long generated code line ") + std::to_string(i)
-                 + " with symbols <>& and markdown **markers**')\n";
+        input += std::string("print('long generated code line ") + std::to_string(i) +
+                 " with symbols <>& and markdown **markers**')\n";
     }
     input += "```";
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/AiConfig.h"
+
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -81,6 +83,7 @@ class Config
         return enabledProviders_;
     }
     [[nodiscard]] static bool IsProviderEnabled(AiProvider provider);
+    [[nodiscard]] static AiModelSpec GetModelSpec(AiProvider provider, const std::string& slot);
     [[nodiscard]] static const std::unordered_set<int64_t>& GetAllowlistIds()
     {
         return allowlistIds_;
@@ -137,6 +140,7 @@ class Config
     static std::unordered_set<int64_t> adminIds_;
     static std::string viewerUrl_;
     static std::filesystem::path viewerDir_;
+    static AiConfig aiConfig_;
 };
 
 } // namespace mbb

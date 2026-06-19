@@ -7,7 +7,7 @@
 #include "telegram/MessageSplitter.h"
 #include "telegram/TelegramApi.h"
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 
 #include <algorithm>
 #include <chrono>

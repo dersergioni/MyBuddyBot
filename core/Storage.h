@@ -5,6 +5,7 @@
 #include <set>
 #include <sqlite3.h>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace mbb
@@ -48,6 +49,16 @@ class Storage
 
     [[nodiscard]] std::vector<std::pair<std::string, std::string>> SelectActualUserChatHistory(int64_t chatId,
                                                                                                int32_t threadId);
+
+    void UpsertUser(int64_t userId, const std::string& username, const std::string& firstName);
+
+    [[nodiscard]] int64_t LookupUserByUsername(const std::string& username);
+
+    [[nodiscard]] std::string GetUserDisplayName(int64_t userId);
+
+    void UpsertChat(int64_t chatId, int32_t threadId);
+
+    [[nodiscard]] std::vector<std::pair<int64_t, int32_t>> SelectAllChats();
 
   private:
     struct ClearHistoryInfo

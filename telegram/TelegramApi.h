@@ -21,6 +21,8 @@ class TelegramApi
   public:
     explicit TelegramApi(std::shared_ptr<TgBot::Bot> bot);
 
+    // --- Send text messages ---
+
     // Send text message
     TgBot::Message::Ptr SendMessage(int64_t chatId,
                                     int32_t threadId,
@@ -33,6 +35,18 @@ class TelegramApi
                                                  const std::string& text,
                                                  const std::string& buttonLabel,
                                                  const std::string& url);
+
+    // Send text message with inline keyboard (buttons under the message)
+    TgBot::Message::Ptr SendMessageWithInlineKeyboard(int64_t chatId,
+                                                      int32_t threadId,
+                                                      const std::string& text,
+                                                      TgBot::InlineKeyboardMarkup::Ptr keyboard,
+                                                      const std::string& parseMode = "HTML");
+
+    // Send text with ReplyKeyboardRemove markup
+    TgBot::Message::Ptr SendMessageAndRemoveReplyKeyboard(int64_t chatId, int32_t threadId, const std::string& text);
+
+    // --- Send media ---
 
     // Send photo by URL
     TgBot::Message::Ptr SendPhoto(int64_t chatId,
@@ -52,11 +66,25 @@ class TelegramApi
     // Send voice message from base64 WAV (converts to OGG internally)
     TgBot::Message::Ptr SendVoice(int64_t chatId, int32_t threadId, const std::string& base64Wav);
 
+    // --- Edit messages ---
+
     // Edit existing message
     TgBot::Message::Ptr EditMessage(int64_t chatId,
                                     int32_t messageId,
                                     const std::string& text,
                                     const std::string& parseMode = "HTML");
+
+    // Edit existing message with inline keyboard
+    TgBot::Message::Ptr EditMessageWithInlineKeyboard(int64_t chatId,
+                                                      int32_t messageId,
+                                                      const std::string& text,
+                                                      TgBot::InlineKeyboardMarkup::Ptr keyboard,
+                                                      const std::string& parseMode = "HTML");
+
+    // --- Other operations ---
+
+    // Answer a callback query (dismiss the "loading" indicator on inline button press)
+    bool AnswerCallbackQuery(const std::string& callbackQueryId, const std::string& text = "");
 
     // Delete message
     bool DeleteMessage(int64_t chatId, int32_t messageId);

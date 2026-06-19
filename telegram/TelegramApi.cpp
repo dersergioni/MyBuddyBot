@@ -5,7 +5,9 @@
 #include "infra/Base64.h"
 #include "infra/FileUtils.h"
 
-#include <fmt/core.h>
+#include <fmt/format.h>
+
+#include <string_view>
 
 namespace mbb
 {
@@ -13,6 +15,8 @@ namespace mbb
 TelegramApi::TelegramApi(std::shared_ptr<TgBot::Bot> bot) : bot_(std::move(bot))
 {
 }
+
+// --- Send text messages ---
 
 TgBot::Message::Ptr TelegramApi::SendMessage(int64_t chatId,
                                              int32_t threadId,
@@ -72,6 +76,65 @@ TgBot::Message::Ptr TelegramApi::SendMessageWithUrlButton(
         return nullptr;
     }
 }
+
+TgBot::Message::Ptr TelegramApi::SendMessageWithInlineKeyboard(int64_t chatId,
+                                                               int32_t threadId,
+                                                               const std::string& text,
+                                                               TgBot::InlineKeyboardMarkup::Ptr keyboard,
+                                                               const std::string& parseMode)
+{
+    try
+    {
+        std::lock_guard<std::mutex> lock(apiMutex_);
+        return bot_->getApi().sendMessage(chatId, text,
+                                          nullptr,  // linkPreviewOptions
+                                          nullptr,  // replyParameters
+                                          keyboard, // replyMarkup
+                                          parseMode,
+                                          true, // disableNotification
+                                          {},   // entities
+                                          threadId,
+                                          false, // protectContent
+                                          ""     // businessConnectionId
+        );
+    }
+    catch (const std::exception& e)
+    {
+        Logger::Error(fmt::format("Failed to send message with inline keyboard: {}", e.what()));
+        return nullptr;
+    }
+}
+
+TgBot::Message::Ptr TelegramApi::SendMessageAndRemoveReplyKeyboard(int64_t chatId,
+                                                                   int32_t threadId,
+                                                                   const std::string& text)
+{
+    try
+    {
+        auto removeMarkup = std::make_shared<TgBot::ReplyKeyboardRemove>();
+        removeMarkup->removeKeyboard = true;
+
+        std::lock_guard<std::mutex> lock(apiMutex_);
+        return bot_->getApi().sendMessage(chatId, text,
+                                          nullptr,      // linkPreviewOptions
+                                          nullptr,      // replyParameters
+                                          removeMarkup, // replyMarkup
+                                          "HTML",
+                                          true, // disableNotification
+                                          {},   // entities
+                                          threadId,
+                                          false, // protectContent
+                                          ""     // businessConnectionId
+        );
+    }
+    catch (const std::exception& e)
+    {
+        Logger::Error(fmt::format("Failed to send message removing reply keyboard: {}", e.what()));
+        return nullptr;
+    }
+}
+
+// --- Send media ---
 
 TgBot::Message::Ptr TelegramApi::SendPhoto(int64_t chatId,
                                            int32_t threadId,
@@ -185,6 +248,8 @@ TgBot::Message::Ptr TelegramApi::SendVoice(int64_t chatId, int32_t threadId, con
     }
 }
 
+// --- Edit messages ---
+
 TgBot::Message::Ptr TelegramApi::EditMessage(int64_t chatId,
                                              int32_t messageId,
                                              const std::string& text,
@@ -202,8 +267,71 @@ TgBot::Message::Ptr TelegramApi::EditMessage(int64_t chatId,
     }
     catch (const std::exception& e)
     {
-        Logger::Error(fmt::format("Failed to edit message: {}", e.what()));
+        std::string_view what = e.what();
+        if (what.find("message is not modified") != std::string_view::npos)
+        {
+            Logger::Debug(fmt::format("Edit message skipped (not modified): chat_id={} msg_id={}", chatId, messageId));
+        }
+        else
+        {
+            Logger::Error(fmt::format("Failed to edit message: {}", e.what()));
+        }
         return nullptr;
+    }
+}
+
+TgBot::Message::Ptr TelegramApi::EditMessageWithInlineKeyboard(int64_t chatId,
+                                                               int32_t messageId,
+                                                               const std::string& text,
+                                                               TgBot::InlineKeyboardMarkup::Ptr keyboard,
+                                                               const std::string& parseMode)
+{
+    try
+    {
+        std::lock_guard<std::mutex> lock(apiMutex_);
+        return bot_->getApi().editMessageText(text, chatId, messageId,
+                                              "", // inlineMessageId
+                                              parseMode,
+                                              nullptr, // linkPreviewOptions
+                                              keyboard // replyMarkup
+        );
+    }
+    catch (const std::exception& e)
+    {
+        std::string_view what = e.what();
+        if (what.find("message is not modified") != std::string_view::npos)
+        {
+            Logger::Debug(fmt::format("Edit message skipped (not modified): chat_id={} msg_id={}", chatId, messageId));
+        }
+        else
+        {
+            Logger::Error(fmt::format("Failed to edit message with inline keyboard: {}", e.what()));
+        }
+        return nullptr;
+    }
+}
+
+// --- Other operations ---
+
+bool TelegramApi::AnswerCallbackQuery(const std::string& callbackQueryId, const std::string& text)
+{
+    try
+    {
+        std::lock_guard<std::mutex> lock(apiMutex_);
+        return bot_->getApi().answerCallbackQuery(callbackQueryId, text);
+    }
+    catch (const std::exception& e)
+    {
+        std::string_view what = e.what();
+        if (what.find("query is too old") != std::string_view::npos)
+        {
+            Logger::Debug(fmt::format("Callback query expired: {}", callbackQueryId));
+        }
+        else
+        {
+            Logger::Error(fmt::format("Failed to answer callback query: {}", e.what()));
+        }
+        return false;
     }
 }
 
